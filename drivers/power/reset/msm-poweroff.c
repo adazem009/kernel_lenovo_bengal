@@ -63,9 +63,23 @@ static void scm_disable_sdi(void);
  * So the SDI cannot be re-enabled when it already by-passed.
  */
 static int download_mode = 1;
-static struct kobject dload_kobj;
+static bool force_warm_reboot;
 
 static int in_panic;
+
+static int panic_prep_restart(struct notifier_block *this,
+			      unsigned long event, void *ptr)
+{
+	in_panic = 1;
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block panic_blk = {
+	.notifier_call	= panic_prep_restart,
+};
+
+
+static struct kobject dload_kobj;
 static int dload_type = SCM_DLOAD_FULLDUMP;
 static void *dload_mode_addr;
 static bool dload_mode_enabled;
@@ -130,17 +144,6 @@ static const struct sysfs_ops reset_sysfs_ops = {
 
 static struct kobj_type reset_ktype = {
 	.sysfs_ops	= &reset_sysfs_ops,
-};
-
-static int panic_prep_restart(struct notifier_block *this,
-			      unsigned long event, void *ptr)
-{
-	in_panic = 1;
-	return NOTIFY_DONE;
-}
-
-static struct notifier_block panic_blk = {
-	.notifier_call	= panic_prep_restart,
 };
 
 int scm_set_dload_mode(int arg1, int arg2)
@@ -284,10 +287,10 @@ static void setup_dload_mode_support(void)
 {
 	int ret;
 
+	atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
+
 	if (scm_is_call_available(SCM_SVC_BOOT, SCM_DLOAD_CMD) > 0)
 		scm_dload_supported = true;
-
-	atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
 
 	dload_mode_addr = map_prop_mem(DL_MODE_PROP);
 
