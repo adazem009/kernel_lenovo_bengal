@@ -1897,7 +1897,7 @@ static int himax_touch_get(struct himax_ts_data *ts, uint8_t *buf,
 
 	/*SMWP*/
 	case HX_REPORT_SMWP_EVENT:
-		__pm_wakeup_event(&ts->ts_SMWP_wake_lock, TS_WAKE_LOCK_TIMEOUT);
+		__pm_wakeup_event(ts->ts_SMWP_wake_lock, TS_WAKE_LOCK_TIMEOUT);
 		msleep(20);
 		g_core_fp.fp_burst_enable(0);
 
@@ -3285,7 +3285,7 @@ found_hx_chip:
 
 #if defined(HX_SMART_WAKEUP)
 	ts->SMWP_enable = 0;
-	wakeup_source_init(&ts->ts_SMWP_wake_lock, HIMAX_common_NAME);
+	ts->ts_SMWP_wake_lock = wakeup_source_register(ts->dev, HIMAX_common_NAME);
 #endif
 #if defined(HX_HIGH_SENSE)
 	ts->HSEN_enable = 0;
@@ -3314,7 +3314,7 @@ found_hx_chip:
 
 err_creat_proc_file_failed:
 #if defined(HX_SMART_WAKEUP)
-	wakeup_source_trash(&ts->ts_SMWP_wake_lock);
+	wakeup_source_unregister(ts->ts_SMWP_wake_lock);
 #endif
 #if defined(HX_CONFIG_FB) || defined(HX_CONFIG_DRM)
 	cancel_work_sync(&ts->himax_drm_notify);
@@ -3393,7 +3393,7 @@ void himax_chip_common_deinit(void)
 	himax_report_data_deinit();
 
 #if defined(HX_SMART_WAKEUP)
-	wakeup_source_trash(&ts->ts_SMWP_wake_lock);
+	wakeup_source_unregister(ts->ts_SMWP_wake_lock);
 #endif
 #if defined(HX_CONFIG_FB)
 	if (fb_unregister_client(&ts->fb_notif))
