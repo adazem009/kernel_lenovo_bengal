@@ -409,8 +409,8 @@ struct tcpc_device *tcpc_device_register(struct device *parent,
 	/* If system support "WAKE_LOCK_IDLE",
 	 * please use it instead of "WAKE_LOCK_SUSPEND"
 	 */
-	tcpc->attach_wake_lock = wakeup_source_register("rt1711_tcpc_attach_wakelock");
-	tcpc->dettach_temp_wake_lock = wakeup_source_register("rt1711_tcpc_detach_wakelock");
+	tcpc->attach_wake_lock = wakeup_source_register(&tcpc->dev, "rt1711_tcpc_attach_wakelock");
+	tcpc->dettach_temp_wake_lock = wakeup_source_register(&tcpc->dev, "rt1711_tcpc_detach_wakelock");
 
 	tcpci_timer_init(tcpc);
 #ifdef CONFIG_USB_POWER_DELIVERY
