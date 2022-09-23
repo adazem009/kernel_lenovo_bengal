@@ -39,7 +39,7 @@ struct dbmdx_spi_private {
 	struct spi_device		*client;
 	struct chip_interface		chip;
 #ifdef CONFIG_PM_WAKELOCKS
-	struct wakeup_source		ps_nosuspend_wl;
+	struct wakeup_source		*ps_nosuspend_wl;
 #endif
 	u16				post_pll_div;
 	u32				interface_enabled;

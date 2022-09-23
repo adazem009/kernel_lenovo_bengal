@@ -963,7 +963,7 @@ static void uart_transport_enable(struct dbmdx_private *p, bool enable)
 	if (enable) {
 
 #ifdef CONFIG_PM_WAKELOCKS
-		__pm_stay_awake(&uart_p->ps_nosuspend_wl);
+		__pm_stay_awake(uart_p->ps_nosuspend_wl);
 #endif
 		ret = wait_event_interruptible(dbmdx_wq,
 			uart_p->interface_enabled);
@@ -1050,7 +1050,7 @@ static void uart_transport_enable(struct dbmdx_private *p, bool enable)
 
 	} else {
 #ifdef CONFIG_PM_WAKELOCKS
-		__pm_relax(&uart_p->ps_nosuspend_wl);
+		__pm_relax(uart_p->ps_nosuspend_wl);
 #endif
 		p->wakeup_release(p);
 
@@ -1516,7 +1516,7 @@ int uart_common_probe(struct platform_device *pdev, const char threadnamefmt[])
 	atomic_set(&p->stop_uart_probing, 0);
 
 #ifdef CONFIG_PM_WAKELOCKS
-	wakeup_source_init(&p->ps_nosuspend_wl,
+	p->ps_nosuspend_wl = wakeup_source_register(p->dev,
 					"dbmdx_nosuspend_wakelock_uart");
 #endif
 
@@ -1580,7 +1580,7 @@ int uart_common_remove(struct platform_device *pdev)
 	dev_set_drvdata(p->dev, NULL);
 
 #ifdef CONFIG_PM_WAKELOCKS
-	wakeup_source_trash(&p->ps_nosuspend_wl);
+	wakeup_source_unregister(p->ps_nosuspend_wl);
 #endif
 
 	uart_close_file(p);

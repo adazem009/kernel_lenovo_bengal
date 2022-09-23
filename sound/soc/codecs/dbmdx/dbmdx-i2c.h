@@ -34,7 +34,7 @@ struct dbmdx_i2c_private {
 	struct i2c_client		*client;
 	struct chip_interface		chip;
 #ifdef CONFIG_PM_WAKELOCKS
-	struct wakeup_source		ps_nosuspend_wl;
+	struct wakeup_source		*ps_nosuspend_wl;
 #endif
 	u32				interface_enabled;
 };

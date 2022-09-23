@@ -751,7 +751,7 @@ static void spi_transport_enable(struct dbmdx_private *p, bool enable)
 	if (enable) {
 
 #ifdef CONFIG_PM_WAKELOCKS
-		__pm_stay_awake(&spi_p->ps_nosuspend_wl);
+		__pm_stay_awake(spi_p->ps_nosuspend_wl);
 #endif
 		ret = wait_event_interruptible(dbmdx_wq,
 			spi_p->interface_enabled);
@@ -771,7 +771,7 @@ static void spi_transport_enable(struct dbmdx_private *p, bool enable)
 			msleep(DBMDX_MSLEEP_SPI_WAKEUP);
 	} else {
 #ifdef CONFIG_PM_WAKELOCKS
-		__pm_relax(&spi_p->ps_nosuspend_wl);
+		__pm_relax(spi_p->ps_nosuspend_wl);
 #endif
 		p->wakeup_release(p);
 	}
@@ -1147,7 +1147,7 @@ int spi_common_probe(struct spi_device *client)
 		goto out_err_mem_free1;
 
 #ifdef CONFIG_PM_WAKELOCKS
-	wakeup_source_init(&p->ps_nosuspend_wl, "dbmdx_nosuspend_wakelock_spi");
+	p->ps_nosuspend_wl = wakeup_source_register(p->dev, "dbmdx_nosuspend_wakelock_spi");
 #endif
 
 	/* fill in chip interface functions */
@@ -1199,7 +1199,7 @@ int spi_common_remove(struct spi_device *client)
 	struct dbmdx_spi_private *p = (struct dbmdx_spi_private *)ci->pdata;
 
 #ifdef CONFIG_PM_WAKELOCKS
-	wakeup_source_trash(&p->ps_nosuspend_wl);
+	wakeup_source_unregister(p->ps_nosuspend_wl);
 #endif
 	kfree(p->pdata->send);
 	kfree(p->pdata->recv);
