@@ -76,3 +76,4 @@ obj-$(CONFIG_QTI_XR_SMRTVWR_MISC) += qxr-stdalonevwr.o
 obj-$(CONFIG_HQ_SYSFS_SUPPORT)	+= hqsysfs/
 obj-$(CONFIG_FPR_FPC)		+= fpr_FingerprintCard/
 obj-y				+= hardware.o
+obj-y				+= hardware_info.o
