@@ -8,6 +8,13 @@ dtb-$(CONFIG_ARCH_QCOM)	+= msm8994-angler-rev-101.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= msm8996-mtp.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= sdm845-mtp.dtb
 
+dtb-$(CONFIG_ARCH_QCOM)	+= tbj606-bengal.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= tbj606-bengalp.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= tbj606-scuba-2gb.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= tbj606-scuba.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= tbj606-scubap.dtb
+dtb-$(CONFIG_ARCH_QCOM)	+= tbj606-mpdata.dtb
+
 always		:= $(dtb-y)
 subdir-y	:= $(dts-dirs)
 clean-files    := *.dtb *.dtbo
