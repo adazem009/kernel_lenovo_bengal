@@ -11,6 +11,14 @@
 #include <video/mipi_display.h>
 #include <linux/version.h>
 
+#if defined(CONFIG_LCD_BIAS_TPS65132)
+#include <linux/tps65132.h>
+#endif
+
+#if defined(CONFIG_BACKLIGHT_SGM37604)
+#include <linux/sgm37604a.h>
+#endif
+
 #include "dsi_panel.h"
 #include "dsi_ctrl_hw.h"
 #include "dsi_parser.h"
@@ -380,6 +388,9 @@ static int dsi_panel_reset(struct dsi_panel *panel)
 		}
 	}
 
+#if defined(CONFIG_LCD_BIAS_TPS65132)
+	tps65132_enable();
+#endif
 	for (i = 0; i < r_config->count; i++) {
 		gpio_set_value(r_config->reset_gpio,
 			       r_config->sequence[i].level);
@@ -467,7 +478,15 @@ static int dsi_panel_power_on(struct dsi_panel *panel)
 
 	rc = dsi_panel_reset(panel);
 	if (rc) {
-		DSI_ERR("[%s] failed to reset panel, rc=%d\n", panel->name, rc);
+		DSI_ERR("dsi_panel_reset[%s] failed to reset panel, rc=%d\n", panel->name, rc);
+
+#if defined(CONFIG_LCD_BIAS_TPS65132)
+		tps65132_disable();
+#endif
+
+#if defined(CONFIG_BACKLIGHT_SGM37604)
+		sgm37604a_bled_disable();
+#endif
 		goto error_disable_gpio;
 	}
 
@@ -515,6 +534,10 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 		DSI_ERR("[%s] failed set pinctrl state, rc=%d\n", panel->name,
 		       rc);
 	}
+
+#if defined(CONFIG_LCD_BIAS_TPS65132)
+		tps65132_disable();
+#endif
 
 	rc = dsi_pwr_enable_regulator(&panel->power_info, false);
 	if (rc)
@@ -4405,6 +4428,10 @@ int dsi_panel_post_enable(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
+#if defined(CONFIG_BACKLIGHT_SGM37604)
+		sgm37604a_bled_enable();
+#endif
+
 	mutex_lock(&panel->panel_lock);
 
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_POST_ON);
@@ -4426,6 +4453,10 @@ int dsi_panel_pre_disable(struct dsi_panel *panel)
 		DSI_ERR("invalid params\n");
 		return -EINVAL;
 	}
+
+#if defined(CONFIG_BACKLIGHT_SGM37604)
+    sgm37604a_bled_disable();
+#endif
 
 	mutex_lock(&panel->panel_lock);
 
@@ -4483,9 +4514,13 @@ int dsi_panel_disable(struct dsi_panel *panel)
 	return rc;
 }
 
+#if defined(CONFIG_LCD_BIAS_TPS65132)
+extern int Himax_gesture_status(void);
+#endif
 int dsi_panel_unprepare(struct dsi_panel *panel)
 {
 	int rc = 0;
+	int ret = 0;
 
 	if (!panel) {
 		DSI_ERR("invalid params\n");
@@ -4493,12 +4528,16 @@ int dsi_panel_unprepare(struct dsi_panel *panel)
 	}
 
 	mutex_lock(&panel->panel_lock);
-
-	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_POST_OFF);
-	if (rc) {
-		DSI_ERR("[%s] failed to send DSI_CMD_SET_POST_OFF cmds, rc=%d\n",
-		       panel->name, rc);
-		goto error;
+#if defined(CONFIG_LCD_BIAS_TPS65132)
+	ret = Himax_gesture_status();
+#endif
+	if (ret != 1) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_POST_OFF);
+		if (rc) {
+			DSI_ERR("[%s] failed to send DSI_CMD_SET_POST_OFF cmds, rc=%d\n",
+				panel->name, rc);
+			goto error;
+		}
 	}
 
 error:
