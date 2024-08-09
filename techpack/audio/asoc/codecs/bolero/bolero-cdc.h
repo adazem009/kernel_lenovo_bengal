@@ -135,6 +135,10 @@ static inline int bolero_register_res_clk(struct device *dev, rsc_clk_cb_t cb)
 static inline void bolero_unregister_res_clk(struct device *dev)
 {
 }
+static bool bolero_is_va_macro_registered(struct device *dev)
+{
+	return false;
+}
 
 static bool bolero_is_va_macro_registered(struct device *dev)
 {
