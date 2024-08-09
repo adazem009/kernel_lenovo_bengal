@@ -490,6 +490,14 @@ config BACKLIGHT_RAVE_SP
 	help
 	  Support for backlight control on RAVE SP device.
 
+config LCD_BIAS_TPS65132
+	bool "Enble TPS65132 driver"
+	help
+	  define tps65132 driver config to enable tps65132 driver.
+	  To set tps65132 driver which you choose avoid cannot driver OCP2131.
+	  Please make sure CONFIG_MTK_LCM_BIAS_TPS65132 in xxxxxx_defconfig.mk.
+	  And also make sure true on in ProjectConfig.mk
+
 endif # BACKLIGHT_CLASS_DEVICE
 
 endif # BACKLIGHT_LCD_SUPPORT
