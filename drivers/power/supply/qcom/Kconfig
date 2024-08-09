@@ -149,4 +149,7 @@ config MM8013_FG
 	help
 	  Say Y here to enable the Fuel Gauge driver. 
 
+config POGO
+	help
+	  Say Y here to enable the POGO driver. 
 endmenu
