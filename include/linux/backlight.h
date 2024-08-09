@@ -118,6 +118,7 @@ struct backlight_device {
 	bool fb_bl_on[FB_MAX];
 
 	int use_count;
+	int touch_status;
 };
 
 static inline int backlight_update_status(struct backlight_device *bd)
