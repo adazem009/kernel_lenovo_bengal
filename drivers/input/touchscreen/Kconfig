@@ -1359,6 +1359,16 @@ config TOUCHSCREEN_HIMAX_CHIPSET
 
 	  If unsure, say N.
 
+config VITURALSAR
+	bool "Vitural Sar series"
+	depends on I2C
+	help
+	  Say Y here if you have a Goodix GT9xx touchscreen.
+	  Gt9xx controllers are multi touch controllers which can
+	  report 5 touches at a time.
+
+	  If unsure, say N.
+
 source "drivers/input/touchscreen/himax83102p/Kconfig"
 
 source "drivers/input/touchscreen/synaptics_tcm/Kconfig"
