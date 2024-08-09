@@ -25,6 +25,12 @@ config INPUT
 
 if INPUT
 
+config INPUT_HALL_SENSOR
+        tristate "input hall sensor"
+        default y
+        help
+         hall sensor wake system
+
 config INPUT_LEDS
 	tristate "Export input device LEDs in sysfs"
 	depends on LEDS_CLASS
