@@ -581,30 +581,62 @@ static int qusb_phy_init(struct usb_phy *phy)
 				qphy->base + QUSB2PHY_PORT_TUNE2);
 	}
 
+	qphy->tune1 = 0xf8;
+	qphy->tune2 = 0x73;
+	qphy->tune3 = 0x93;
+	qphy->tune4 = 0xc7;
+	qphy->tune5 = 0x11;
+
 	/* If tune modparam set, override tune value */
 	if (qphy->tune1) {
+		reg = readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE1);
+		//pr_err("=============qusb=====before=====tune1==========reg[%02x]=======\r\n",reg);
 		writel_relaxed(qphy->tune1,
 				qphy->base + QUSB2PHY_PORT_TUNE1);
+		usleep_range(1000, 3000);
+		reg = readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE1);
+		//pr_err("=============qusb==========tune1==========reg[%02x]=======\r\n",reg);
+
 	}
 
 	if (qphy->tune2) {
+		reg = readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE2);
+		//pr_err("=============qusb=====before=====tune2==========reg[%02x]=======\r\n",reg);
 		writel_relaxed(qphy->tune2,
 				qphy->base + QUSB2PHY_PORT_TUNE2);
+		usleep_range(1000, 3000);
+		reg = readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE2);
+		//pr_err("=============qusb==========tune2==========reg[%02x]=======\r\n",reg);
 	}
 
 	if (qphy->tune3) {
+		reg = readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE3);
+		//pr_err("=============qusb=====before=====tune3==========reg[%02x]=======\r\n",reg);
 		writel_relaxed(qphy->tune3,
 				qphy->base + QUSB2PHY_PORT_TUNE3);
+		usleep_range(1000, 3000);
+		reg = readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE3);
+		//pr_err("=============qusb==========tune3==========reg[%02x]=======\r\n",reg);
 	}
 
 	if (qphy->tune4) {
+		reg = readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE4);
+		//pr_err("=============qusb=====before=====tune4==========reg[%02x]=======\r\n",reg);
 		writel_relaxed(qphy->tune4,
 				qphy->base + QUSB2PHY_PORT_TUNE4);
+		usleep_range(1000, 3000);
+		reg = readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE4);
+		//pr_err("=============qusb==========tune4==========reg[%02x]=======\r\n",reg);
 	}
 
 	if (qphy->tune5) {
+		reg = readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE5);
+		//pr_err("=============qusb=====before=====tune5==========reg[%02x]=======\r\n",reg);
 		writel_relaxed(qphy->tune5,
 				qphy->base + QUSB2PHY_PORT_TUNE5);
+		usleep_range(1000, 3000);
+		reg = readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE5);
+		//pr_err("=============qusb==========tune5==========reg[%02x]=======\r\n",reg);
 	}
 
 	/* ensure above writes are completed before re-enabling PHY */
