@@ -15,6 +15,8 @@ enum fsa_function {
 	FSA_EVENT_MAX,
 };
 
+static int headset_det_gpio_num;
+
 #ifdef CONFIG_QCOM_FSA4480_I2C
 int fsa4480_switch_event(struct device_node *node,
 			 enum fsa_function event);
