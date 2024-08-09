@@ -43,6 +43,7 @@
 #include <linux/jiffies.h>
 #include <linux/string.h>
 #include <linux/timer.h>
+#include <linux/power_supply.h>
 
 
 MODULE_AUTHOR("Stephane Chatty <chatty@enac.fr>");
@@ -1579,7 +1580,7 @@ static int mt_input_configured(struct hid_device *hdev, struct hid_input *hi)
 			break;
 		}
 	}
-
+	__set_bit(KEY_POWER, hi->input->keybit);
 	if (suffix) {
 		name = devm_kzalloc(&hi->input->dev,
 				    strlen(hdev->name) + strlen(suffix) + 2,

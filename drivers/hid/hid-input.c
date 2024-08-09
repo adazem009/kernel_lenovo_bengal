@@ -36,6 +36,8 @@
 
 #define unk	KEY_UNKNOWN
 
+struct input_dev *g_input;
+
 static const unsigned char hid_keyboard[256] = {
 	  0,  0,  0,  0, 30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38,
 	 50, 49, 24, 25, 16, 19, 31, 20, 22, 47, 17, 45, 21, 44,  2,  3,
@@ -1043,6 +1045,11 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 
 		case 0x29f: map_key_clear(KEY_SCALE);		break;
 
+		case 0x38d: map_key_clear(KEY_FULLSCREEN);        break; 
+		case 0x38e: map_key_clear(KEY_SCREENLOCK);        break; 
+		case 0x390: map_key_clear(KEY_SWITCHLANUAGE);        break; 
+		case 0x38f: map_key_clear(KEY_NC);        break;
+
 		default: map_key_clear(KEY_UNKNOWN);
 		}
 		break;
@@ -1214,6 +1221,18 @@ mapped:
 	}
 
 	if (usage->type == EV_KEY) {
+		if((device->vendor == 0x17EF)&&(device->product == 0x6103))
+		{
+			set_bit(KEY_NC, input->keybit);
+			set_bit(KEY_SWITCHLANUAGE, input->keybit);	
+			set_bit(KEY_SCREENLOCK, input->keybit);	
+			set_bit(KEY_BRIGHTNESSUP, input->keybit);
+			set_bit(KEY_BRIGHTNESSDOWN, input->keybit);	
+			set_bit(KEY_FULLSCREEN, input->keybit);
+			set_bit(KEY_APPSELECT, input->keybit);
+			set_bit(KEY_HOMEPAGE, input->keybit);
+			set_bit(KEY_BACK, input->keybit);
+		}
 		set_bit(EV_MSC, input->evbit);
 		set_bit(MSC_SCAN, input->mscbit);
 	}
@@ -1241,7 +1260,15 @@ void hidinput_hid_event(struct hid_device *hid, struct hid_field *field, struct 
 	if (!field->hidinput)
 		return;
 
-	input = field->hidinput->input;
+
+	if((hid->vendor == 0x17EF)&&(hid->product == 0x6103))
+	{
+		input =  g_input;
+	}
+	else
+	{
+		input = field->hidinput->input;
+	}
 
 	if (usage->hat_min < usage->hat_max || usage->hat_dir) {
 		int hat_dir = usage->hat_dir;
@@ -1813,8 +1840,23 @@ int hidinput_connect(struct hid_device *hid, unsigned int force)
 		}
 
 		if (input_register_device(hidinput->input))
+		{
+					pr_err("==============input register error========\r\n");
+
 			goto out_unwind;
+		}
+
+		if((hid->vendor == 0x17EF)&&(hid->product == 0x6103))
+		{
+			if(strstr(hidinput->input->name,"Keyboard") != NULL)
+			{
+				g_input = hidinput->input;
+				hid->kbd_input=true;
+			}
+		}
+
 		hidinput->registered = true;
+		pr_err("=========hid->kbd_input=true========\r\n");
 	}
 
 	if (list_empty(&hid->inputs)) {
@@ -1845,9 +1887,16 @@ void hidinput_disconnect(struct hid_device *hid)
 	list_for_each_entry_safe(hidinput, next, &hid->inputs, list) {
 		list_del(&hidinput->list);
 		if (hidinput->registered)
+		{
 			input_unregister_device(hidinput->input);
+			hid->kbd_input=false;
+			hid_dbg(hid,"nput_unregister_device.\n");
+		}
 		else
+		{
+			hid_dbg(hid,"input_free_device.\n");
 			input_free_device(hidinput->input);
+		}
 		kfree(hidinput->name);
 		kfree(hidinput);
 	}
