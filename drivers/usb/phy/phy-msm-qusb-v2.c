@@ -455,12 +455,21 @@ static void qusb_phy_host_init(struct usb_phy *phy)
 	writel_relaxed(DEBUG_CTRL1_OVERRIDE_VAL,
 		qphy->base + qphy->phy_reg[DEBUG_CTRL1]);
 
+
+	qphy->tune[0] = 0xf8;
+	qphy->tune[1] = 0x73;
+	qphy->tune[2] = 0x93;
+	qphy->tune[3] = 0xc7;
+	qphy->tune[4] = 0x11;
+
 	/* if debugfs based tunex params are set, use that value. */
 	for (p_index = 0; p_index < 5; p_index++) {
-		if (qphy->tune[p_index])
-			writel_relaxed(qphy->tune[p_index],
-				qphy->base + qphy->phy_reg[PORT_TUNE1] +
-							(4 * p_index));
+		reg = readb_relaxed(qphy->base + 0x80 + (4 * p_index));
+		//pr_err("=============qusb-v2-host=====before=====tune[%d]==========reg[%02x]=======\r\n",p_index+1,reg);
+		writel_relaxed(qphy->tune[p_index],qphy->base + 0x80 + (4 * p_index));
+		usleep_range(1000, 3000);
+		reg = readb_relaxed(qphy->base + 0x80 + (4 * p_index));
+		//pr_err("=============qusb-v2-host=====after=====tune[%d]==========reg[%02x]=======\r\n",p_index+1,reg);
 	}
 
 	if (qphy->refgen_north_bg_reg && qphy->override_bias_ctrl2)
@@ -530,8 +539,10 @@ static int qusb_phy_init(struct usb_phy *phy)
 			qphy->base + qphy->phy_reg[PWR_CTRL1]);
 
 	if (qphy->qusb_phy_init_seq)
-		qusb_phy_write_seq(qphy->base, qphy->qusb_phy_init_seq,
-				qphy->init_seq_len, 0);
+	{
+		qusb_phy_write_seq(qphy->base, qphy->qusb_phy_init_seq,qphy->init_seq_len, 0);
+		//pr_err("=============qusb-v2======test==========\r\n");	
+	}
 	if (qphy->efuse_reg) {
 		if (!qphy->tune_val)
 			qusb_phy_get_tune1_param(qphy);
@@ -543,11 +554,19 @@ static int qusb_phy_init(struct usb_phy *phy)
 	}
 
 	/* if debugfs based tunex params are set, use that value. */
+	qphy->tune[0] = 0xf8;
+	qphy->tune[1] = 0x73;
+	qphy->tune[2] = 0x93;
+	qphy->tune[3] = 0xc7;
+	qphy->tune[4] = 0x11;
+
 	for (p_index = 0; p_index < 5; p_index++) {
-		if (qphy->tune[p_index])
-			writel_relaxed(qphy->tune[p_index],
-				qphy->base + qphy->phy_reg[PORT_TUNE1] +
-							(4 * p_index));
+		reg = readb_relaxed(qphy->base + 0x80 + (4 * p_index));
+		//pr_err("=============qusb-v2-host=====before=====tune[%d]==========reg[%02x]=======\r\n",p_index+1,reg);
+		writel_relaxed(qphy->tune[p_index],qphy->base + 0x80 + (4 * p_index));
+		usleep_range(1000,3000);
+		reg = readb_relaxed(qphy->base + 0x80 + (4 * p_index));
+		//pr_err("=============qusb-v2==========tune[%d]==========reg[%02x]=======\r\n",p_index+1,reg);
 	}
 
 	if (qphy->refgen_north_bg_reg && qphy->override_bias_ctrl2)
