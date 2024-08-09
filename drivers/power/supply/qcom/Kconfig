@@ -145,4 +145,8 @@ config SMB1398_CHARGER
 	      wireless charger receiver and provide the input for downstream
 	      chargers.
 
+config MM8013_FG
+	help
+	  Say Y here to enable the Fuel Gauge driver. 
+
 endmenu
