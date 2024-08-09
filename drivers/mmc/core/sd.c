@@ -28,6 +28,18 @@
 #include "mmc_ops.h"
 #include "sd.h"
 #include "sd_ops.h"
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifdef CONFIG_MMC_SDHCI_BH201
+#include "../host/sdhci-bh201.h"
+#if IFLYTEK
+#include "../host/sprd-sdhcr11.h"
+#else
+#include "../host/sdhci.h"
+#include "../host/sdhci-pltfm.h"
+#include "../host/sdhci-msm.h"
+#endif
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
 
 static const unsigned int tran_exp[] = {
 	10000,		100000,		1000000,	10000000,
@@ -677,6 +689,28 @@ out:
 	return err;
 }
 
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifdef CONFIG_MMC_SDHCI_BH201
+int mmc_app_acmd42(struct mmc_card *card)
+{
+	int err;
+	struct mmc_command cmd = {0};
+
+	BUG_ON(!card);
+	BUG_ON(!card->host);
+
+	cmd.opcode = 42;
+	cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
+
+	err = mmc_wait_for_app_cmd(card->host, card, &cmd, MMC_CMD_RETRIES);
+	if (err)
+		return err;
+
+	return 0;
+}
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
+
 /*
  * UHS-I specific initialization procedure
  */
@@ -699,11 +733,46 @@ static int mmc_sd_init_uhs_card(struct mmc_card *card)
 
 	mmc_set_bus_width(card->host, MMC_BUS_WIDTH_4);
 
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifdef CONFIG_MMC_SDHCI_BH201
+	mmc_app_acmd42(card);//wangpengpeng@wind-mobi.com add for sd at 20180223
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
 	/*
 	 * Select the bus speed mode depending on host
 	 * and card capability.
 	 */
 	sd_update_bus_speed_mode(card);
+// bayhub chevron.li add for degrade code at 2019/8/30 start
+#ifdef CONFIG_MMC_SDHCI_BH201
+	/*
+	 * Frequency Degrade
+	 * Not clear the degrade flag, until card init success
+	 */
+	if(card->host->degrade) {
+		card->host->degrade_count ++;
+	}
+
+	if (card->sd_bus_speed < card->host->degrade_count)
+			card->sd_bus_speed = 0;
+	else
+			card->sd_bus_speed -= card->host->degrade_count; 
+
+	card->host->cur_sd_bus_speed = card->sd_bus_speed;
+	/*
+	 * Set a disable 1.8v flag used in card init,
+	 * when card mode need to degrade to SD2.0
+	 */
+	if(card->sd_bus_speed < 3){
+			pr_err("%s: the next degrade will be SD2.0 current mode is 0x%08x\n",
+							mmc_hostname(card->host),card->sd_bus_speed);
+			card->host->v18_disable = 1;
+	}
+
+	pr_err("%s: the new mode is 0x%08x\n",
+							mmc_hostname(card->host),card->sd_bus_speed);
+#endif
+// bayhub chevron.li add for degrade code at 2019/8/30 end
 
 	/* Set the driver strength for the card */
 	err = sd_select_driver_type(card, status);
@@ -832,7 +901,18 @@ try_again:
 		ocr &= ~SD_OCR_S18R;
 		pr_warn("%s: Skipping voltage switch\n", mmc_hostname(host));
 	}
-
+// bayhub chevron.li add for degrade code at 2019/8/30 start
+#ifdef CONFIG_MMC_SDHCI_BH201
+	/* Skip change 1.8V */
+	if((host->v18_disable && host->degrade) || host->legacy_mode) {
+			pr_err("%s: go to legacy mode.\n",
+							mmc_hostname(host));
+			retries = 0;
+			host->legacy_mode = 1;
+			ocr &= ~SD_OCR_S18R;
+	}
+#endif
+// bayhub chevron.li add for degrade code at 2019/8/30 end
 	/*
 	 * Since we're changing the OCR value, we seem to
 	 * need to tell some cards to go back to the idle
@@ -1022,6 +1102,190 @@ static bool mmc_sd_card_using_v18(struct mmc_card *card)
 	       (SD_MODE_UHS_SDR50 | SD_MODE_UHS_SDR104 | SD_MODE_UHS_DDR50);
 }
 
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifdef CONFIG_MMC_SDHCI_BH201
+static int driver_send_command(struct sdhci_host *host)
+{
+	int ret=0;
+	int err;
+	struct mmc_host *mmc = host->mmc;
+	struct mmc_command cmd = {0};
+
+	BUG_ON(!host);
+
+	cmd.opcode = MMC_SELECT_CARD;
+	cmd.arg = 0;
+	cmd.flags = MMC_RSP_NONE | MMC_CMD_AC;
+	err = mmc_wait_for_cmd(mmc, &cmd, 3);
+	if (err) {
+	    pr_err("---- CMD7 FAILE0 ----\n");
+	} else {
+	    ret=1;
+	}
+	return ret;
+}
+
+static void driver_send_command24(struct sdhci_host *host,u32 * cfg_data,int data_len)
+{
+	struct mmc_host *mmc = host->mmc;
+
+	u8 *data1 = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	struct mmc_request mrq = {0};
+	struct mmc_command cmd = { 0 };
+	struct mmc_data data = { 0 };
+	struct scatterlist sg;
+
+	memcpy(data1, (u8 *)&(cfg_data[0]), data_len);
+	sg_init_one(&sg, data1, 512);
+
+	cmd.opcode = MMC_WRITE_BLOCK;
+	cmd.arg = 0;
+	cmd.flags = MMC_RSP_R1 | MMC_CMD_ADTC;
+	data.blksz = 512;
+	data.blocks = 1;
+	data.flags = MMC_DATA_WRITE;
+	data.timeout_ns = 1000 * 1000 * 1000; /* 1 sec */
+	data.sg = &sg;
+	data.sg_len = 1;
+	mrq.cmd = &cmd;
+	mrq.data = &data;
+	mrq.stop = NULL;
+	mmc_wait_for_req(mmc, &mrq);
+
+	kfree(data1);
+}
+
+void bht_update_cfg(struct mmc_host *mmc_host, struct mmc_card *card,u32 * cfg_data,int data_len)
+{
+	int ret = 0;
+	struct sdhci_host *host;
+	#if IFLYTEK
+	{
+		struct sprd_sdhc_host *sprd_host = mmc_priv(mmc_host);
+		host = sprd_priv(sprd_host);
+	}
+	#else
+	{
+		host = mmc_priv(mmc_host);
+	}
+	#endif
+	{
+		mmc_sd_get_csd(mmc_host, card);
+		mmc_set_bus_width(mmc_host, MMC_BUS_WIDTH_4);
+		mmc_sd_get_csd(mmc_host, card);
+	#if IFLYTEK
+		sprd_sdhc_reset(sprd_host, SPRD_SDHC_BIT_RST_CMD|SPRD_SDHC_BIT_RST_DAT);
+	#else
+		if (host->ops->reset) {
+			host->ops->reset(host, SDHCI_RESET_CMD|SDHCI_RESET_DATA);
+		}
+	#endif
+		mmc_sd_get_csd(mmc_host, card);
+		if (1) {
+			ret=driver_send_command(host);// send command7
+			if(!ret)
+				pr_err("--send cmd7   error--\n");
+			driver_send_command24(host,cfg_data,data_len);// send command24
+			ret=driver_send_command(host);//send command7
+			if (!ret) {
+				pr_err("--send cmd7  error--\n");
+			}
+		}
+		mmc_set_bus_width(mmc_host, MMC_BUS_WIDTH_1);
+	}
+}
+
+void bht_load_hw_inject(struct mmc_host *mmc_host, struct mmc_card *card,u32 * cfg_data,int data_len,u32 sel200, u32 sel100)
+{
+	u32 gg_hw_inj[16]= GGC_CFG_DATA;
+
+	gg_hw_inj[1]=0x7364032;
+	gg_hw_inj[11]=0x57336200;
+	gg_hw_inj[12]=0x00725777;
+
+	bht_update_cfg(mmc_host,card,gg_hw_inj,data_len);
+}
+
+// This function is updated for match stage2 code at 2019/8/30
+void bht_load(struct mmc_host *mmc_host, struct mmc_card *card)
+{
+	static const int s_dll_voltage_cfg[4][2] = {
+		{0x30503106, 0x64141711},
+		{0x31503106, 0x64141711},
+		{0x30503106, 0x64141751},
+		{0x31503106, 0x64141751},
+	};
+#if IFLYTEK
+	struct sprd_sdhc_host *vendor_host = mmc_priv(mmc_host);
+	struct sdhci_host *host = sprd_priv(vendor_host);
+
+	if ( bht_target_host(vendor_host))
+#else
+	struct sdhci_host * host = mmc_priv(mmc_host);
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_msm_host *vendor_host = pltfm_host->priv;
+	if ( bht_target_host(host))
+#endif
+	{
+		u32 gg_sw_def[16] = GGC_CFG_DATA;//default use iSD no SSC
+
+		pr_info("%s: Load BHT patch RC8.3.1-DS=4\n", mmc_hostname(mmc_host));
+		/* clear tuning flag when need to degrade mode */
+		if (mmc_host->degrade) {
+			_ggc_reset_tuning_result_for_dll(host);
+			//vendor_host->ggc.selx_tuning_done_flag = 0;
+		}
+
+		if (vendor_host->ggc.dll_unlock_reinit_flg) {
+			int cur_dll_voltage_idx = vendor_host->ggc.cur_dll_voltage_idx;
+			pr_info("update dll voltage cfg for dll unlock reinit flg: idx=%d\n", cur_dll_voltage_idx);
+			ggc_tuning_result_reset(host);
+			gg_sw_def[8] = s_dll_voltage_cfg[cur_dll_voltage_idx][0];
+			gg_sw_def[9] = s_dll_voltage_cfg[cur_dll_voltage_idx][1];
+		}
+		if (vendor_host->ggc.driver_strength_reinit_flg) {
+			u8 driver_strength_reinit_flg = vendor_host->ggc.driver_strength_reinit_flg;
+			pr_info("%s: driver strength should be init to %d\n", mmc_hostname(mmc_host), driver_strength_reinit_flg);
+			ggc_tuning_result_reset(host);
+			if (vendor_host->ggc.driver_strength_reinit_flg <= 7) {
+				gg_sw_def[15] &= 0x0f0fffff;
+				gg_sw_def[15] |= (driver_strength_reinit_flg << 28)
+												 | (driver_strength_reinit_flg << 20);
+			}
+		}
+		driver_send_command(host);// send command7
+		if (vendor_host->ggc.tuning_cmd7_timeout_reinit_flg == 0 && vendor_host->ggc.selx_tuning_done_flag == 0) {
+			pr_info("gg_sw_def[8] = 0x%08x, gg_sw_def[9]=0x%08x, gg_sw_def[15]=%08x\n", gg_sw_def[8], gg_sw_def[9], gg_sw_def[15]);
+			bht_load_hw_inject(mmc_host,card,gg_sw_def,sizeof(gg_sw_def),0x3ff,0x77f);
+			bht_update_cfg(mmc_host,card,gg_sw_def,sizeof(gg_sw_def));
+			set_gg_reg_cur_val((u8*)gg_sw_def);
+		}	else {
+			if (vendor_host->ggc.selx_tuning_done_flag)
+				pr_info("%s: skip load default configuration for tuning done\n", mmc_hostname(mmc_host));
+			if (vendor_host->ggc.tuning_cmd7_timeout_reinit_flg)
+			{
+				u8 data[512];
+				pr_info("%s: write previous inject results to bh201 for cmd7 timeout flag is set\n", mmc_hostname(mmc_host));
+				get_gg_reg_cur_val(data);
+				if (1)
+				{
+					u32 i = 0;
+					u32 reg;
+					pr_info("%s: dump config data before write to bh201\n", __FUNCTION__);
+					for (i = 0; i < 128; i++)
+					{
+						memcpy(&reg, data+i*sizeof(u32), sizeof(u32));
+						pr_info("    ggc_reg32[%03d]=0x%08x\n", i, reg);
+					}
+				}
+				bht_update_cfg(mmc_host,card, (u32*)data,sizeof(data));
+			}
+		}
+	}
+}
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
+
 /*
  * Handle the detection and initialisation of a card.
  *
@@ -1060,7 +1324,17 @@ retry:
 		card->type = MMC_TYPE_SD;
 		memcpy(card->raw_cid, cid, sizeof(card->raw_cid));
 	}
-
+// bayhub chevron.li add for degrade code at 2019/8/30 start
+#ifdef CONFIG_MMC_SDHCI_BH201
+	/* clear degrade flag after card remove and insert */
+	if (host->card_removed_flag) {
+			host->card_removed_flag = 0;
+			host->degrade_count = 0;
+			host->degrade = 0;
+	}
+	pr_err("### Bayhub debug: degrade count is %d ###\n", host->degrade_count);
+#endif
+// bayhub chevron.li add for degrade code at 2019/8/30 end
 	/*
 	 * Call the optional HC's init_card function to handle quirks.
 	 */
@@ -1085,6 +1359,15 @@ retry:
 		mmc_decode_cid(card);
 	}
 
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifdef CONFIG_MMC_SDHCI_BH201
+	{
+// avoid the card structure is a null pointer when used in bayhub tuning process
+		host->card = card;
+		bht_load(host,card);
+	}
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
 	/*
 	 * handling only for cards supporting DSR and hosts requesting
 	 * DSR configuration
@@ -1141,6 +1424,23 @@ retry:
 		if (err)
 			goto free_card;
 	} else {
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifdef CONFIG_MMC_SDHCI_BH201
+		/*
+		 * Switch to wider bus (if supported).
+		 */
+		if ((host->caps & MMC_CAP_4_BIT_DATA) &&
+			(card->scr.bus_widths & SD_SCR_BUS_WIDTH_4)) {
+			err = mmc_app_set_bus_width(card, MMC_BUS_WIDTH_4);
+			if (err)
+				goto free_card;
+
+			mmc_set_bus_width(host, MMC_BUS_WIDTH_4);
+		}
+		mmc_app_acmd42(card);
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
+
 		/*
 		 * Attempt to change to high-speed (if supported)
 		 */
@@ -1154,7 +1454,8 @@ retry:
 		 * Set bus speed.
 		 */
 		mmc_set_clock(host, mmc_sd_get_max_clock(card));
-
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifndef CONFIG_MMC_SDHCI_BH201
 		/*
 		 * Switch to wider bus (if supported).
 		 */
@@ -1166,6 +1467,8 @@ retry:
 
 			mmc_set_bus_width(host, MMC_BUS_WIDTH_4);
 		}
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
 	}
 
 	if (host->caps2 & MMC_CAP2_AVOID_3_3V &&
@@ -1178,7 +1481,18 @@ retry:
 done:
 	card->clk_scaling_highest = mmc_sd_get_max_clock(card);
 	card->clk_scaling_lowest = host->f_min;
+// bayhub chevron.li add for degrade code at 2019/8/30 start
+#ifdef CONFIG_MMC_SDHCI_BH201
+	/* Clear the degrade flag when the card init success */
+	host->degrade = 0;
+#endif
+// bayhub chevron.li add for degrade code at 2019/8/30 end
 
+// bayhub chevron.li add for degrade code at 2020/4/24 start
+#ifndef CONFIG_MMC_SDHCI_BH201
+	host->card = card;
+#endif
+// bayhub chevron.li add for degrade code at 2020/4/24 end
 	return 0;
 
 free_card:
@@ -1240,7 +1554,16 @@ out:
 
 	if (err) {
 		mmc_sd_remove(host);
-
+// bayhub chevron.li add for degrade code at 2019/8/30 start
+#ifdef CONFIG_MMC_SDHCI_BH201
+		/* set the degrade clear flag */
+		pr_err("### Bayhub debug: detect card removed ###\n");
+		host->v18_disable = 0;
+		host->legacy_mode = 0;
+		host->card_removed_flag = 1;
+		ggc_tuning_result_reset(mmc_priv(host));
+#endif
+// bayhub chevron.li add for degrade code at 2019/8/30 end
 		mmc_claim_host(host);
 		mmc_detach_bus(host);
 		mmc_power_off(host);
@@ -1480,6 +1803,16 @@ int mmc_attach_sd(struct mmc_host *host)
 {
 	int err;
 	u32 ocr, rocr;
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifndef CONFIG_MMC_SDHCI_BH201
+#ifdef CONFIG_MMC_PARANOID_SD_INIT
+	int retries;
+#endif
+#endif
+
+#ifdef CONFIG_MMC_SDHCI_BH201
+bool bretry =  false;
+#endif
 
 	WARN_ON(!host->claimed);
 
@@ -1521,9 +1854,86 @@ int mmc_attach_sd(struct mmc_host *host)
 	/*
 	 * Detect and init the card.
 	 */
+
+//#ifdef CONFIG_MMC_PARANOID_SD_INIT
+
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifdef CONFIG_MMC_SDHCI_BH201
+retry:	if (bht_target_host(mmc_priv(host))) {
+		int retries = 5;
+		while (retries) {
+			err = mmc_sd_init_card(host, rocr, NULL);
+			if (err) {
+				retries--;
+				mmc_power_off(host);
+				usleep_range(5000, 5500);
+				mmc_power_up(host, rocr);
+				mmc_select_voltage(host, rocr);
+				continue;
+			}
+			else
+			{
+				if(bretry == true)
+				{
+					bretry = false;
+					host->degrade = 0;
+					pr_info("card init degrade successfully!\n");
+				}
+			}
+
+			break;
+		}
+
+		if (!retries) {
+			if(NULL != host){
+			if(host->cur_sd_bus_speed >2){
+				bretry = true;
+				host->degrade = 1;
+				pr_info("card init try to degrade\n");
+				goto retry;
+			}
+			else
+			{
+			bretry = false;
+			host->degrade = 0;
+			host->cur_sd_bus_speed = 0;
+			pr_err("%s: mmc_sd_init_card() failure (err = %d)\n",
+			       mmc_hostname(host), err);
+			goto err;
+			}
+		  }
+		}
+	 }
+#elif defined CONFIG_MMC_PARANOID_SD_INIT
+	retries = 5;
+	while (retries) {
+		err = mmc_sd_init_card(host, rocr, NULL);
+		if (err) {
+			retries--;
+			mmc_power_off(host);
+			usleep_range(5000, 5500);
+			mmc_power_up(host, rocr);
+			mmc_select_voltage(host, rocr);
+			continue;
+		}
+		break;
+	}
+
+	if (!retries) {
+#ifndef CONFIG_MMC_SDHCI_BH201
+		printk(KERN_ERR "%s: mmc_sd_init_card() failure (err = %d)\n",
+		       mmc_hostname(host), err);
+#endif
+		pr_err("%s: mmc_sd_init_card() failure (err = %d)\n",
+		       mmc_hostname(host), err);
+		goto err;
+	}
+#else
 	err = mmc_sd_init_card(host, rocr, NULL);
 	if (err)
 		goto err;
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
 
 	mmc_release_host(host);
 	err = mmc_add_card(host->card);

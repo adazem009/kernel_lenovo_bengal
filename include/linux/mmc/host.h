@@ -542,6 +542,16 @@ struct mmc_host {
 
 	struct mmc_card		*card;		/* device attached to this host */
 
+// bayhub chevron.li add for degrade code at 2019/8/30 start
+#ifdef CONFIG_MMC_SDHCI_BH201
+	u8					v18_disable; /* flag used for degrde to sd2.0 */
+	u8					legacy_mode; /* flag used to keep sd2.0 mode */
+	u8					card_removed_flag; /* flag used for recovery from degrade mode after insert card */
+	u8			degrade;
+	u8			degrade_count;
+	unsigned int  cur_sd_bus_speed;
+#endif
+// bayhub chevron.li add for degrade code at 2019/8/30 end
 	wait_queue_head_t	wq;
 	struct mmc_ctx		*claimer;	/* context that has host claimed */
 	int			claim_cnt;	/* "claim" nesting count */
