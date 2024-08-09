@@ -1349,6 +1349,19 @@ config TOUCHSCREEN_SYNAPTICS_TCM
 	  To compile this driver as a module, choose M here: the
 	  module will be called synaptics_tcm.
 
+config TOUCHSCREEN_FT8201
+	bool "FocalTech FT8201 I2C Touchscreen support"
+	depends on I2C
+	help
+	  Say Y here if you have an EDT "Polytouch" touchscreen based
+	  on the FocalTech FT8201 family of controllers connected to
+	  your system.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called ft8201.
+
 config TOUCHSCREEN_HIMAX_CHIPSET
 	bool "Himax touchpanel CHIPSET"
 	depends on SPI
@@ -1358,6 +1371,8 @@ config TOUCHSCREEN_HIMAX_CHIPSET
 	  report 10 touches at a time.
 
 	  If unsure, say N.
+
+source "drivers/input/touchscreen/ft8201/Kconfig"
 
 source "drivers/input/touchscreen/himax83102p/Kconfig"
 
