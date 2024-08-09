@@ -878,6 +878,12 @@ DISABLE_LTO	+= $(DISABLE_CFI)
 export CFI_CFLAGS DISABLE_CFI
 endif
 
+ifeq ($(strip $(TARGET_FACTORY_VERSION)) , true)
+KBUILD_CFLAGS += -DFACTORY_VERSION_ENABLE
+endif
+
+
+
 # arch Makefile may override CC so keep this after arch Makefile is included
 NOSTDINC_FLAGS += -nostdinc -isystem $(shell $(CC) -print-file-name=include)
 
