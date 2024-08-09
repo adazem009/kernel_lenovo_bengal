@@ -17,6 +17,9 @@
 #define STEP_CHG_VOTER		"STEP_CHG_VOTER"
 #define JEITA_VOTER		"JEITA_VOTER"
 
+#define COLD_TEMP		0
+#define HOT_TEMP		500
+
 #define is_between(left, right, value) \
 		(((left) >= (right) && (left) >= (value) \
 			&& (value) >= (right)) \
@@ -65,6 +68,7 @@ struct step_chg_info {
 	struct votable		*fcc_votable;
 	struct votable		*fv_votable;
 	struct votable		*usb_icl_votable;
+	struct votable		*jeita_chg_disable_votable;
 	struct wakeup_source	*step_chg_ws;
 	struct power_supply	*batt_psy;
 	struct power_supply	*bms_psy;
@@ -614,6 +618,7 @@ static int handle_jeita(struct step_chg_info *chip)
 	union power_supply_propval pval = {0, };
 	int rc = 0, fcc_ua = 0, fv_uv = 0;
 	u64 elapsed_us;
+	struct power_supply *ext_psy = power_supply_get_by_name("mm8013");
 
 	rc = power_supply_get_property(chip->batt_psy,
 		POWER_SUPPLY_PROP_SW_JEITA_ENABLED, &pval);
@@ -643,11 +648,25 @@ static int handle_jeita(struct step_chg_info *chip)
 	else
 		rc = power_supply_get_property(chip->batt_psy,
 				chip->jeita_fcc_config->param.psy_prop, &pval);
+	if (ext_psy)
+		rc = power_supply_get_property(chip->batt_psy,
+				chip->jeita_fcc_config->param.psy_prop, &pval);
 
 	if (rc < 0) {
 		pr_err("Couldn't read %s property rc=%d\n",
 				chip->jeita_fcc_config->param.prop_name, rc);
 		return rc;
+	}
+
+	if (!chip->jeita_chg_disable_votable)
+		chip->jeita_chg_disable_votable = find_votable("CHG_DISABLE");
+	if (chip->jeita_chg_disable_votable) {
+		bool chg_disable = false;
+		chg_disable = ((pval.intval <= COLD_TEMP)) ||
+			((pval.intval >= HOT_TEMP));
+		vote(chip->jeita_chg_disable_votable, JEITA_VOTER, chg_disable, 0);
+	} else {
+		pr_err("Couldn't found jeita_chg_disable_votable\n");
 	}
 
 	rc = get_val(chip->jeita_fcc_config->fcc_cfg,

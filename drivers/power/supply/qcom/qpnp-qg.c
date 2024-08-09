@@ -3107,7 +3107,10 @@ static int qg_load_battery_profile(struct qpnp_qg *chip)
 static int qg_setup_battery(struct qpnp_qg *chip)
 {
 	int rc;
-
+	struct power_supply *ext_psy = power_supply_get_by_name("mm8013");
+	int battery_id=0;
+	union power_supply_propval reta = {0,};
+	
 	if (!is_battery_present(chip)) {
 		qg_dbg(chip, QG_DEBUG_PROFILE, "Battery Missing!\n");
 		chip->battery_missing = true;
@@ -3120,6 +3123,22 @@ static int qg_setup_battery(struct qpnp_qg *chip)
 			pr_err("Failed to detect batt_id rc=%d\n", rc);
 			chip->profile_loaded = false;
 		} else {
+			if(ext_psy != NULL)
+			{
+				power_supply_get_property(ext_psy,POWER_SUPPLY_PROP_battery_id, &reta);
+				battery_id= reta.intval;
+				if(battery_id== 1){
+					chip->batt_id_ohm=10000;  //107k
+				}
+				else{
+					chip->batt_id_ohm=200000;  //10 k
+				}
+			}
+			else
+			{
+				chip->batt_id_ohm=200000;  //10 k
+			}
+			pr_err("qg_setup_battery battery_id=%d, batt_id_ohm:%d\n", battery_id,chip->batt_id_ohm );
 			rc = qg_load_battery_profile(chip);
 			if (rc < 0) {
 				pr_err("Failed to load battery-profile rc=%d\n",

@@ -226,6 +226,22 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_PRECHARGE_CURRENT,
 	POWER_SUPPLY_PROP_CHARGE_TERM_CURRENT,
 	POWER_SUPPLY_PROP_CALIBRATE,
+	POWER_SUPPLY_PROP_batt_cap,
+	POWER_SUPPLY_PROP_charge_dock,
+	POWER_SUPPLY_PROP_charge_usb,
+	POWER_SUPPLY_PROP_mcu_switch,
+	POWER_SUPPLY_PROP_mcu_reset,
+	POWER_SUPPLY_PROP_battery_id,
+	POWER_SUPPLY_PROP_charge_enable,
+	POWER_SUPPLY_PROP_usb_vbus_ctl,
+	POWER_SUPPLY_PROP_usb_device_ctl,
+	POWER_SUPPLY_PROP_usb_host_ctl,
+	POWER_SUPPLY_PROP_touchpad_switch,
+	POWER_SUPPLY_PROP_set_typec_device,
+	POWER_SUPPLY_PROP_set_typec_host,
+	POWER_SUPPLY_PROP_AUDIO_ACC,
+	POWER_SUPPLY_PROP_AUDIO_ACC_REMOVE,
+	POWER_SUPPLY_PROP_DEBUG_TEMP,
 	/* Local extensions */
 	POWER_SUPPLY_PROP_USB_HC,
 	POWER_SUPPLY_PROP_USB_OTG,
@@ -400,6 +416,7 @@ enum power_supply_type {
 	POWER_SUPPLY_TYPE_UFP,			/* Type-C UFP */
 	POWER_SUPPLY_TYPE_DFP,			/* Type-C DFP */
 	POWER_SUPPLY_TYPE_CHARGE_PUMP,		/* Charge Pump */
+	POWER_SUPPLY_TYPE_CUST,			/* Custmor Design */
 };
 
 enum power_supply_usb_type {

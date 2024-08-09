@@ -91,11 +91,12 @@ enum print_reason {
 #define ITERM_LIMITS_PM8150B_MA		10000
 #define ADC_CHG_ITERM_MASK		32767
 
-#define SDP_100_MA			100000
+#define SDP_100_MA			500000
 #define SDP_CURRENT_UA			500000
 #define CDP_CURRENT_UA			1500000
-#define DCP_CURRENT_UA			1500000
-#define HVDCP_CURRENT_UA		3000000
+#define DCP_CURRENT_UA			3000000
+#define DOCK_CURRENT_UA		2000000
+#define HVDCP_CURRENT_UA		2000000
 #define TYPEC_DEFAULT_CURRENT_UA	900000
 #define TYPEC_MEDIUM_CURRENT_UA		1500000
 #define TYPEC_HIGH_CURRENT_UA		3000000
@@ -380,6 +381,7 @@ struct smb_charger {
 	struct smb_params	param;
 	struct smb_iio		iio;
 	int			*debug_mask;
+	int			*debug_flag;
 	int			pd_disabled;
 	enum smb_mode		mode;
 	struct smb_chg_freq	chg_freq;
@@ -614,6 +616,9 @@ struct smb_charger {
 	int			dcin_uv_count;
 	ktime_t			dcin_uv_last_time;
 	int			last_wls_vout;
+
+	/* debug */
+	int			debug_temp;
 };
 
 int smblib_read(struct smb_charger *chg, u16 addr, u8 *val);
@@ -833,7 +838,8 @@ int smblib_force_vbus_voltage(struct smb_charger *chg, u8 val);
 int smblib_get_irq_status(struct smb_charger *chg,
 				union power_supply_propval *val);
 int smblib_get_qc3_main_icl_offset(struct smb_charger *chg, int *offset_ua);
-
+int typec_partner_register(struct smb_charger *chg,int status);
+void typec_partner_unregister(struct smb_charger *chg);
 int smblib_init(struct smb_charger *chg);
 int smblib_deinit(struct smb_charger *chg);
 #endif /* __SMB5_CHARGER_H */
