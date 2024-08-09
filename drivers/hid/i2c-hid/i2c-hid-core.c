@@ -39,8 +39,14 @@
 #include <linux/acpi.h>
 #include <linux/of.h>
 #include <linux/regulator/consumer.h>
+#include <linux/input.h>
 
 #include <linux/platform_data/i2c-hid.h>
+#include <linux/gpio.h>
+#include <linux/of_irq.h>
+#include <linux/of_address.h>
+#include <linux/of_gpio.h>
+#include <linux/power_supply.h>
 
 #include "../hid-ids.h"
 #include "i2c-hid.h"
@@ -60,6 +66,13 @@
 
 #define I2C_HID_PWR_ON		0x00
 #define I2C_HID_PWR_SLEEP	0x01
+#define MY_KEY_POWER          0x74
+
+#if defined(CONFIG_TOUCHSCREEN_HIMAX_COMMON)
+extern bool himax_screen_off;
+#endif
+
+struct i2c_hid *g_ihid;
 
 /* debug option */
 static bool debug;
@@ -71,7 +84,16 @@ do {									  \
 	if (debug)							  \
 		dev_printk(KERN_DEBUG, &(ihid)->client->dev, fmt, ##arg); \
 } while (0)
-
+int MCU_ver=0;
+int TP_ver=0;
+int KB_ver =0;
+int ADC=0;
+int KB_HALL=0;
+int TP_suspend=0;
+int KB_status=0;
+int Cradle_in=0;
+int KB_connect=0;
+bool first_time = true;
 struct i2c_hid_desc {
 	__le16 wHIDDescLength;
 	__le16 bcdVersion;
@@ -123,6 +145,7 @@ static const struct i2c_hid_cmd hid_reset_cmd =		{ I2C_HID_CMD(0x01),
 static const struct i2c_hid_cmd hid_get_report_cmd =	{ I2C_HID_CMD(0x02) };
 static const struct i2c_hid_cmd hid_set_report_cmd =	{ I2C_HID_CMD(0x03) };
 static const struct i2c_hid_cmd hid_set_power_cmd =	{ I2C_HID_CMD(0x08) };
+static const struct i2c_hid_cmd hid_reset_cmd_quick =	{ I2C_HID_CMD(0x01) };
 static const struct i2c_hid_cmd hid_no_cmd =		{ .length = 0 };
 
 /*
@@ -138,6 +161,7 @@ static const struct i2c_hid_cmd hid_no_cmd =		{ .length = 0 };
 /* The main device structure */
 struct i2c_hid {
 	struct i2c_client	*client;	/* i2c client */
+	struct input_dev 	*ipdev;
 	struct hid_device	*hid;	/* pointer to corresponding HID dev */
 	union {
 		__u8 hdesc_buffer[sizeof(struct i2c_hid_desc)];
@@ -481,9 +505,28 @@ out_unlock:
 	return ret;
 }
 
+
+void switch_touchpad_connect(bool enable)
+{
+        union power_supply_propval reta = {0,};
+	struct power_supply *psy;
+
+	//pr_err("======================mcu_touchpad - %s=======enable[%d]=============\n", __func__,enable);
+	if(enable)
+	{
+		reta.intval = 1;
+	}
+	else
+	{
+		reta.intval = 0;
+	}
+	psy = power_supply_get_by_name("touchpad");
+	power_supply_set_property(psy,POWER_SUPPLY_PROP_touchpad_switch,&reta);
+}
+
 static void i2c_hid_get_input(struct i2c_hid *ihid)
 {
-	int ret;
+	int ret,i;
 	u32 ret_size;
 	int size = le16_to_cpu(ihid->hdesc.wMaxInputLength);
 
@@ -491,6 +534,26 @@ static void i2c_hid_get_input(struct i2c_hid *ihid)
 		size = ihid->bufsize;
 
 	ret = i2c_master_recv(ihid->client, ihid->inbuf, size);
+	if(himax_screen_off)
+	{
+		if(ret < 0)
+		{
+			for(i=0;i<5;i++)
+			{
+				mdelay(10);
+				ret = i2c_master_recv(ihid->client, ihid->inbuf, size);
+				//pr_err("=======bbbbbbb==========ret[%d]==size[%d]====\r\n",ret,size);
+				if(ret == size)
+				{
+					break;
+				}
+			}
+		}
+
+	}
+
+
+	
 	if (ret != size) {
 		if (ret < 0)
 			return;
@@ -521,12 +584,109 @@ static void i2c_hid_get_input(struct i2c_hid *ihid)
 		return;
 	}
 
+	if(ihid->inbuf[2] == 0x06)
+	{
+		 MCU_ver=ihid->inbuf[4];
+		 KB_ver =ihid->inbuf[5];
+		 TP_ver=ihid->inbuf[6];
+		 ADC=(ihid->inbuf[8]<<8)+ihid->inbuf[7];
+		 KB_HALL=( ihid->inbuf[3]>>7) &0x01;
+		 TP_suspend=( ihid->inbuf[3]>>6) &0x01;
+		 KB_status=(ihid->inbuf[3] >>4)&0x03;
+		 Cradle_in=(ihid->inbuf[3] >>1)&0x07;
+		 KB_connect=ihid->inbuf[3]&0x01;
+
+		i2c_hid_dbg(ihid,"MCU_ver[%02x] KB_ver[%02x] TP_ver[%02x] ADC[%d] KB_HALL[%02x] TP_suspend[%02x] KB_status[%02x] Cradle_in[%02x] KB_connect[%02x] \r\n",MCU_ver,KB_ver,TP_ver,ADC,KB_HALL,TP_suspend,KB_status,Cradle_in,KB_connect);
+
+		if(first_time)
+		{
+			first_time = false;
+			mdelay(130);
+
+		}
+		if(KB_connect ==0)
+		{
+			if(ihid->hid->kbd_input==true)
+			{
+#ifndef FACTORY_VERSION
+				i2c_hid_dbg(ihid,"i2c_hid_irq hidinput_disconnect himax_screen_off[%d]\r\n",himax_screen_off);	
+				if(himax_screen_off)
+				{
+					himax_screen_off=false;
+					input_report_key(ihid->ipdev,MY_KEY_POWER,1);
+					input_sync(ihid->ipdev);
+					input_report_key(ihid->ipdev,MY_KEY_POWER,0);
+					input_sync(ihid->ipdev);
+				}
+				hidinput_disconnect(ihid->hid);
+				switch_touchpad_connect(false);
+				kobject_uevent(&ihid->hid->dev.kobj,KOBJ_REMOVE);
+				kobject_uevent(&ihid->hid->dev.kobj,KOBJ_OFFLINE);
+				return;
+#endif
+			}
+		}
+		else
+		{
+			if(ihid->hid->kbd_input==false)
+			{
+#ifndef FACTORY_VERSION
+				i2c_hid_dbg(ihid,"hid-61 KBD hidinput_connect\r\n");	
+
+				hidinput_connect(ihid->hid,1);
+				switch_touchpad_connect(true);
+#endif
+			}
+			if((TP_suspend==0)&&(KB_status == 0))
+			{
+				kobject_uevent(&ihid->hid->dev.kobj,KOBJ_ADD);
+				i2c_hid_dbg(ihid,"hid-61 KBD KOBJ_ADD\r\n");	
+	
+			}
+			else
+			{
+				kobject_uevent(&ihid->hid->dev.kobj,KOBJ_REMOVE);
+				i2c_hid_dbg(ihid,"hid-61 KBD KOBJ_REMOVE\r\n");	
+			}
+
+
+			if((KB_HALL == 0)&&(KB_status == 0))
+			{
+				kobject_uevent(&ihid->hid->dev.kobj,KOBJ_ONLINE);
+				i2c_hid_dbg(ihid,"hid-61 KBD KOBJ_ONLINE\r\n");	
+			}
+			else
+			{
+				kobject_uevent(&ihid->hid->dev.kobj,KOBJ_OFFLINE);
+				i2c_hid_dbg(ihid,"hid-61 KBD KOBJ_OFFLINE\r\n");	
+			}
+			return;
+		}
+	}
+
+	
+
 	i2c_hid_dbg(ihid, "input: %*ph\n", ret_size, ihid->inbuf);
 
 	if (test_bit(I2C_HID_STARTED, &ihid->flags))
+	{
+
+#if defined(CONFIG_TOUCHSCREEN_HIMAX_COMMON)
+
+		if(himax_screen_off)
+		{
+			i2c_hid_dbg(ihid,"wake up system himax_screen_off[%d]\r\n",himax_screen_off);	
+			himax_screen_off=false;
+			input_report_key(ihid->ipdev,MY_KEY_POWER,1);
+			input_sync(ihid->ipdev);
+			input_report_key(ihid->ipdev,MY_KEY_POWER,0);
+			input_sync(ihid->ipdev);
+		}
+#endif
+		
 		hid_input_report(ihid->hid, HID_INPUT_REPORT, ihid->inbuf + 2,
 				ret_size - 2, 1);
-
+	}
 	return;
 }
 
@@ -851,11 +1011,17 @@ static int i2c_hid_init_irq(struct i2c_client *client)
 	unsigned long irqflags = 0;
 	int ret;
 
-	dev_dbg(&client->dev, "Requesting IRQ: %d\n", client->irq);
+	printk("=======================Requesting IRQ: %d\n", client->irq);
 
-	if (!irq_get_trigger_type(client->irq))
-		irqflags = IRQF_TRIGGER_LOW;
-
+	//if (!irq_get_trigger_type(client->irq))
+		if(client->addr == 0x61)
+		{
+			irqflags = IRQF_TRIGGER_FALLING;
+		}
+		else
+		{
+			irqflags = IRQF_TRIGGER_LOW;
+		}
 	ret = request_threaded_irq(client->irq, NULL, i2c_hid_irq,
 				   irqflags | IRQF_ONESHOT, client->name, ihid);
 	if (ret < 0) {
@@ -865,6 +1031,12 @@ static int i2c_hid_init_irq(struct i2c_client *client)
 			client->name, client->irq, ret);
 
 		return ret;
+	}
+	ret = device_init_wakeup(&client->dev,true);
+	if(ret!=0)
+	{
+		printk("=======================device_init_wakeup faile: %d\n", client->irq);
+
 	}
 
 	return 0;
@@ -1028,29 +1200,124 @@ static void i2c_hid_fwnode_probe(struct i2c_client *client,
 		pdata->post_power_delay_ms = val;
 }
 
+static ssize_t hid_show_version(struct device *dev,
+				struct device_attribute
+				*attr, char *buf)
+{
+
+	return snprintf(buf, PAGE_SIZE, "%d:%d:%d:%d:%d \n", MCU_ver,TP_ver,KB_ver,KB_connect,TP_suspend);
+}
+
+
+static enum power_supply_property touchpad_battery_props[] = {
+	POWER_SUPPLY_PROP_touchpad_switch,
+};
+
+
+
+static int touchpad_get_property(struct power_supply *psy,
+                    enum power_supply_property psp,
+                    union power_supply_propval *val)
+{
+	return 0;
+}
+static int touchpad_set_property(struct power_supply *psy,
+		enum power_supply_property psp,
+		const union power_supply_propval *val)
+{
+
+    switch (psp) {
+    case POWER_SUPPLY_PROP_touchpad_switch:
+	 if(val->intval == 0)
+	 {
+		//printk("=====================POWER_SUPPLY_PROP_touchpad_switch   -00000000000000============\n");
+		hidinput_disconnect(g_ihid->hid);
+	 }
+	 else
+	 {
+		//printk("=====================POWER_SUPPLY_PROP_touchpad_switch   -11111111111111============\n");
+		hidinput_connect(g_ihid->hid,1);
+	 }
+	break;
+    default:
+	return -EINVAL;
+    }
+
+    return 0;
+}
+
+
+
+static const struct power_supply_desc touchpad_desc = {
+	.name			= "touchpad",
+	.type			= POWER_SUPPLY_TYPE_CUST,
+	.properties		= touchpad_battery_props,
+	.num_properties		= 1,
+	.get_property		= touchpad_get_property,
+	.set_property		= touchpad_set_property,
+	.property_is_writeable	= NULL,
+};
+
+
+
+static DEVICE_ATTR(version, 0444,
+		hid_show_version, NULL);
 static int i2c_hid_probe(struct i2c_client *client,
 			 const struct i2c_device_id *dev_id)
 {
-	int ret;
+	int ret,rc;
+	int irq_gpio;
+	char name[20];
 	struct i2c_hid *ihid;
 	struct hid_device *hid;
 	__u16 hidRegister;
 	struct i2c_hid_platform_data *platform_data = client->dev.platform_data;
+        struct device_node* node;
+	//int power_en;
 
-	dbg_hid("HID probe called for i2c 0x%02x\n", client->addr);
+	printk("=====================HID probe called for i2c 0x%02x\n", client->addr);
 
-	if (!client->irq) {
+	/*if (!client->irq) {
 		dev_err(&client->dev,
-			"HID over i2c has not been provided an Int IRQ\n");
+			"=============================HID over i2c has not been provided an Int IRQ\n");
 		return -EINVAL;
 	}
 
 	if (client->irq < 0) {
 		if (client->irq != -EPROBE_DEFER)
 			dev_err(&client->dev,
-				"HID over i2c doesn't have a valid IRQ\n");
+				"=============================HID over i2c doesn't have a valid IRQ\n");
 		return client->irq;
+	}*/
+
+	node = client->dev.of_node;
+
+	irq_gpio = of_get_named_gpio_flags(node, "irq-gpio",0, NULL);
+	if (irq_gpio < 0)
+	{
+		pr_err("=====================HID probei2c 0x%02x get gpio fail\n", client->addr);
+		return -EINVAL;
+	}	
+
+	sprintf(name,"%02x-irq-gpio",client->addr);
+
+	rc = gpio_request(irq_gpio, name);
+
+	if (rc < 0) {
+		pr_err("===============%s gpio_request fail rc=%d\n", __func__, rc);
+		return -EINVAL;
 	}
+
+	rc = gpio_direction_input(irq_gpio);
+	if (rc < 0) {
+		pr_err("============%s gpio_direction_input fail rc=%d\n",
+			__func__, rc);
+		return -EINVAL;
+	}
+
+	client->irq = gpio_to_irq(irq_gpio);
+
+	pr_err("%s ===============irq = %d\n", __func__, client->irq);
 
 	ihid = devm_kzalloc(&client->dev, sizeof(*ihid), GFP_KERNEL);
 	if (!ihid)
@@ -1068,25 +1335,52 @@ static int i2c_hid_probe(struct i2c_client *client,
 		ihid->pdata = *platform_data;
 	}
 
+
+	
+	
+/*	power_en = of_get_named_gpio(node, "power_en", 0);
+	if (power_en < 0)
+	{
+		printk( "power_en is not available\n");
+	}
+	else
+	{
+		printk( "power_en is =========1111===========[%d]\n",power_en);
+		ret = gpio_request(power_en,"power_en");
+		if(ret < 0)
+		{
+			printk( "power_en not request===========[%d]\n",ret);
+		}
+		else
+		{
+			printk( "power_en request===========[%d]\n",ret);
+			ret = gpio_direction_output(power_en,1);
+			printk( "power_en is ========2222============[%d]\n",ret);
+			gpio_set_value(power_en,1);
+			printk( "power_en is ========3333============[%d]\n",ret);
+		}
+	}*/
 	/* Parse platform agnostic common properties from ACPI / device tree */
 	i2c_hid_fwnode_probe(client, &ihid->pdata);
 
 	ihid->pdata.supplies[0].supply = "vdd";
 	ihid->pdata.supplies[1].supply = "vddl";
 
-	ret = devm_regulator_bulk_get(&client->dev,
-				      ARRAY_SIZE(ihid->pdata.supplies),
-				      ihid->pdata.supplies);
-	if (ret)
-		return ret;
+	//ret = devm_regulator_bulk_get(&client->dev,
+	//			      ARRAY_SIZE(ihid->pdata.supplies),
+	//			      ihid->pdata.supplies);
+	//if (ret)
+	//	return ret;
 
-	ret = regulator_bulk_enable(ARRAY_SIZE(ihid->pdata.supplies),
-				    ihid->pdata.supplies);
-	if (ret < 0)
-		return ret;
+	//ret = regulator_bulk_enable(ARRAY_SIZE(ihid->pdata.supplies),
+	//			    ihid->pdata.supplies);
+	//if (ret < 0)
+	//	return ret;
 
 	if (ihid->pdata.post_power_delay_ms)
+	{
 		msleep(ihid->pdata.post_power_delay_ms);
+	}
 
 	i2c_set_clientdata(client, ihid);
 
@@ -1157,9 +1451,45 @@ static int i2c_hid_probe(struct i2c_client *client,
 		goto err_mem_free;
 	}
 
+	
+	ihid->ipdev = input_allocate_device();
+	if (!ihid->ipdev) {
+		pr_err("%s input_allocate_device fail\n", __func__);
+	}
+	else
+	{
+		if(client->addr == 0x60)
+		{
+			ihid->ipdev->name = "touchpad waker";
+		}
+		else
+		{
+			ihid->ipdev->name = "keyboard waker";
+		}
+		input_set_capability(ihid->ipdev, EV_KEY, MY_KEY_POWER);
+		input_set_capability(ihid->ipdev, EV_SW, SW_LID);
+		ret = input_register_device(ihid->ipdev);
+		if (ret) {
+			pr_err("%s input_register_device fail rc=%d\n", __func__, ret);
+		}
+	}
+
 	if (!(ihid->quirks & I2C_HID_QUIRK_NO_RUNTIME_PM))
 		pm_runtime_put(&client->dev);
+	ret = device_create_file(&hid->dev, &dev_attr_version);
+	if (ret)
+	{
+		printk("=============device_create_file version fail============\n");
+	}
 
+	if(client->addr == 0x60)
+	{
+		g_ihid = ihid;
+		printk("=====================register touchpad contral devices============\n");
+		power_supply_register(&client->dev, &touchpad_desc,NULL);		
+	}
+			
+	printk("=====================successed i2c-hid============\n");
 	return 0;
 
 err_mem_free:
@@ -1173,8 +1503,8 @@ err_pm:
 	pm_runtime_disable(&client->dev);
 
 err_regulator:
-	regulator_bulk_disable(ARRAY_SIZE(ihid->pdata.supplies),
-			       ihid->pdata.supplies);
+	//regulator_bulk_disable(ARRAY_SIZE(ihid->pdata.supplies),
+	//		       ihid->pdata.supplies);
 	i2c_hid_free_buffers(ihid);
 	return ret;
 }
@@ -1198,8 +1528,9 @@ static int i2c_hid_remove(struct i2c_client *client)
 	if (ihid->bufsize)
 		i2c_hid_free_buffers(ihid);
 
-	regulator_bulk_disable(ARRAY_SIZE(ihid->pdata.supplies),
-			       ihid->pdata.supplies);
+	device_remove_file(&hid->dev, &dev_attr_version);
+	//regulator_bulk_disable(ARRAY_SIZE(ihid->pdata.supplies),
+	//		       ihid->pdata.supplies);
 
 	return 0;
 }
@@ -1217,42 +1548,42 @@ static int i2c_hid_suspend(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct i2c_hid *ihid = i2c_get_clientdata(client);
-	struct hid_device *hid = ihid->hid;
-	int ret;
-	int wake_status;
+	//struct hid_device *hid = ihid->hid;
+	//int ret;
+	//int wake_status;
 
-	if (hid->driver && hid->driver->suspend) {
+	//if (hid->driver && hid->driver->suspend) {
 		/*
 		 * Wake up the device so that IO issues in
 		 * HID driver's suspend code can succeed.
 		 */
-		ret = pm_runtime_resume(dev);
-		if (ret < 0)
-			return ret;
+	//	ret = pm_runtime_resume(dev);
+	//	if (ret < 0)
+	//		return ret;
 
-		ret = hid->driver->suspend(hid, PMSG_SUSPEND);
-		if (ret < 0)
-			return ret;
-	}
+	//	ret = hid->driver->suspend(hid, PMSG_SUSPEND);
+	//	if (ret < 0)
+	//		return ret;
+	//}
 
-	if (!pm_runtime_suspended(dev)) {
+	//if (!pm_runtime_suspended(dev)) {
 		/* Save some power */
 		i2c_hid_set_power(client, I2C_HID_PWR_SLEEP);
 
-		disable_irq(client->irq);
-	}
+	//	disable_irq(client->irq);
+	//}
 
-	if (device_may_wakeup(&client->dev)) {
-		wake_status = enable_irq_wake(client->irq);
-		if (!wake_status)
+	//if (device_may_wakeup(&client->dev)) {
+		enable_irq_wake(client->irq);
+	//	if (!wake_status)
 			ihid->irq_wake_enabled = true;
-		else
-			hid_warn(hid, "Failed to enable irq wake: %d\n",
-				wake_status);
-	} else {
-		regulator_bulk_disable(ARRAY_SIZE(ihid->pdata.supplies),
-				       ihid->pdata.supplies);
-	}
+	//	else
+	//		hid_warn(hid, "Failed to enable irq wake: %d\n",
+	//			wake_status);
+	//} else {
+	//	regulator_bulk_disable(ARRAY_SIZE(ihid->pdata.supplies),
+	//			       ihid->pdata.supplies);
+	//}
 
 	return 0;
 }
@@ -1263,31 +1594,32 @@ static int i2c_hid_resume(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct i2c_hid *ihid = i2c_get_clientdata(client);
 	struct hid_device *hid = ihid->hid;
-	int wake_status;
+	//int wake_status;
 
-	if (!device_may_wakeup(&client->dev)) {
-		ret = regulator_bulk_enable(ARRAY_SIZE(ihid->pdata.supplies),
-					    ihid->pdata.supplies);
-		if (ret)
-			hid_warn(hid, "Failed to enable supplies: %d\n", ret);
+	//if (!device_may_wakeup(&client->dev)) {
+		//ret = regulator_bulk_enable(ARRAY_SIZE(ihid->pdata.supplies),
+		//			    ihid->pdata.supplies);
+		//if (ret)
+		//	hid_warn(hid, "Failed to enable supplies: %d\n", ret);
 
-		if (ihid->pdata.post_power_delay_ms)
-			msleep(ihid->pdata.post_power_delay_ms);
-	} else if (ihid->irq_wake_enabled) {
-		wake_status = disable_irq_wake(client->irq);
-		if (!wake_status)
-			ihid->irq_wake_enabled = false;
-		else
-			hid_warn(hid, "Failed to disable irq wake: %d\n",
-				wake_status);
-	}
+	//	if (ihid->pdata.post_power_delay_ms)
+	//		msleep(ihid->pdata.post_power_delay_ms);
+	//} else if (ihid->irq_wake_enabled) {
+	//	wake_status = disable_irq_wake(client->irq);
+	//	if (!wake_status)
+	//		ihid->irq_wake_enabled = false;
+	//	else
+	//		hid_warn(hid, "Failed to disable irq wake: %d\n",
+	//			wake_status);
+	//}
 
+		mdelay(50);
 	/* We'll resume to full power */
 	pm_runtime_disable(dev);
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
 
-	enable_irq(client->irq);
+	//enable_irq(client->irq);
 
 	/* Instead of resetting device, simply powers the device on. This
 	 * solves "incomplete reports" on Raydium devices 2386:3118 and
@@ -1297,11 +1629,11 @@ static int i2c_hid_resume(struct device *dev)
 	 * However some ALPS touchpads generate IRQ storm without reset, so
 	 * let's still reset them here.
 	 */
-	if (ihid->quirks & I2C_HID_QUIRK_RESET_ON_RESUME)
-		ret = i2c_hid_hwreset(client);
-	else
+	//if (ihid->quirks & I2C_HID_QUIRK_RESET_ON_RESUME)
+		//ret = i2c_hid_hwreset(client);
+	//else
 		ret = i2c_hid_set_power(client, I2C_HID_PWR_ON);
-
+		ret = i2c_hid_command(client, &hid_reset_cmd_quick, NULL, 0);
 	if (ret)
 		return ret;
 
@@ -1317,19 +1649,19 @@ static int i2c_hid_resume(struct device *dev)
 #ifdef CONFIG_PM
 static int i2c_hid_runtime_suspend(struct device *dev)
 {
-	struct i2c_client *client = to_i2c_client(dev);
+	//struct i2c_client *client = to_i2c_client(dev);
 
-	i2c_hid_set_power(client, I2C_HID_PWR_SLEEP);
-	disable_irq(client->irq);
+	//i2c_hid_set_power(client, I2C_HID_PWR_SLEEP);
+	//disable_irq(client->irq);
 	return 0;
 }
 
 static int i2c_hid_runtime_resume(struct device *dev)
 {
-	struct i2c_client *client = to_i2c_client(dev);
+	//struct i2c_client *client = to_i2c_client(dev);
 
-	enable_irq(client->irq);
-	i2c_hid_set_power(client, I2C_HID_PWR_ON);
+	//enable_irq(client->irq);
+	//i2c_hid_set_power(client, I2C_HID_PWR_ON);
 	return 0;
 }
 #endif
