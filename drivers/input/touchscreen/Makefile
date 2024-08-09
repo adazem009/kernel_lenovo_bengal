@@ -116,3 +116,4 @@ obj-$(CONFIG_TOUCHSCREEN_FTS)	+= focaltech_touch/
 obj-$(CONFIG_TOUCHSCREEN_FT8201)	+= ft8201/
 obj-$(CONFIG_TOUCHSCREEN_NT36XXX)	+= nt36xxx/
 obj-$(CONFIG_TOUCHSCREEN_HIMAX_CHIPSET)	+= himax83102p/
+obj-$(CONFIG_VITURALSAR) 			+= vituralsar_driver.o
