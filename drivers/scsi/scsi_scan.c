@@ -769,6 +769,10 @@ static int scsi_probe_lun(struct scsi_device *sdev, unsigned char *inq_result,
  *     SCSI_SCAN_NO_RESPONSE: could not allocate or setup a scsi_device
  *     SCSI_SCAN_LUN_PRESENT: a new scsi_device was allocated and initialized
  **/
+#ifdef CONFIG_HQ_SYSFS_SUPPORT
+extern char ufs_vendor_name[30];
+extern char ufs_module_name[30];
+#endif
 static int scsi_add_lun(struct scsi_device *sdev, unsigned char *inq_result,
 		blist_flags_t *bflags, int async)
 {
@@ -872,6 +876,12 @@ static int scsi_add_lun(struct scsi_device *sdev, unsigned char *inq_result,
 			sdev->vendor, sdev->model, sdev->rev,
 			sdev->inq_periph_qual, inq_result[2] & 0x07,
 			(inq_result[3] & 0x0f) == 1 ? " CCS" : "");
+
+	#ifdef CONFIG_HQ_SYSFS_SUPPORT
+	strncpy(ufs_vendor_name, sdev->vendor,8);
+	strncpy(ufs_module_name, sdev->model,16);
+	printk("ufs:%s %s\n",ufs_vendor_name,ufs_module_name);
+	#endif
 
 	if ((sdev->scsi_level >= SCSI_2) && (inq_result[7] & 2) &&
 	    !(*bflags & BLIST_NOTQ)) {
