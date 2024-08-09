@@ -477,6 +477,17 @@ config MMC_SDHCI_MSM
 
 	  If unsure, say N.
 
+# huaqin add for SD card bringup by liufurong at 20190201 start
+config MMC_SDHCI_BH201
+	bool "Bayhub BH201 SD bridge for Qualcomm SDHCI Controller Support"
+	depends on MMC_SDHCI_MSM
+	help
+	  This selects the Bayhub BH201 SD bus bridge additions for get better
+	  signal integrity.
+
+	  Select this if you have BH201 supported for SDHCI on QTI chipset.
+	  If unsure, say N.
+# huaqin add for SD card bringup by liufurong at 20190201 end
 config MMC_MXC
 	tristate "Freescale i.MX21/27/31 or MPC512x Multimedia Card support"
 	depends on ARCH_MXC || PPC_MPC512x

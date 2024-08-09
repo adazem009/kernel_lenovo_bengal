@@ -34,6 +34,11 @@
 #include <linux/clk/qcom.h>
 
 #include "sdhci-msm.h"
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifdef CONFIG_MMC_SDHCI_BH201
+#include "sdhci-bh201.h"
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
 #include "sdhci-msm-ice.h"
 #include "sdhci-pltfm.h"
 #include "cqhci.h"
@@ -158,7 +163,9 @@
 #define SDHCI_MSM_MAX_SEGMENTS  (1 << 9)
 #define SDHCI_MSM_MMC_CLK_GATE_DELAY	200 /* msecs */
 
+#ifndef CONFIG_MMC_SDHCI_BH201
 #define CORE_FREQ_100MHZ	(100 * 1000 * 1000)
+#endif
 #define TCXO_FREQ		19200000
 
 #define INVALID_TUNING_PHASE	-1
@@ -166,8 +173,10 @@
 #define sdhci_is_valid_gpio_testbus_trigger_int(_h) \
 	((_h)->pdata->testbus_trigger_irq >= 0)
 
+#ifndef CONFIG_MMC_SDHCI_BH201
 #define NUM_TUNING_PHASES		16
 #define MAX_DRV_TYPES_SUPPORTED_HS200	4
+#endif
 #define MSM_AUTOSUSPEND_DELAY_MS 100
 
 #define RCLK_TOGGLE 0x2
@@ -322,14 +331,14 @@ void sdhci_msm_writel_relaxed(u32 val, struct sdhci_host *host, u32 offset)
 /* Timeout value to avoid infinite waiting for pwr_irq */
 #define MSM_PWR_IRQ_TIMEOUT_MS 5000
 
-static const u32 tuning_block_64[] = {
+const u32 tuning_block_64[] = {
 	0x00FF0FFF, 0xCCC3CCFF, 0xFFCC3CC3, 0xEFFEFFFE,
 	0xDDFFDFFF, 0xFBFFFBFF, 0xFF7FFFBF, 0xEFBDF777,
 	0xF0FFF0FF, 0x3CCCFC0F, 0xCFCC33CC, 0xEEFFEFFF,
 	0xFDFFFDFF, 0xFFBFFFDF, 0xFFF7FFBB, 0xDE7B7FF7
 };
 
-static const u32 tuning_block_128[] = {
+const u32 tuning_block_128[] = {
 	0xFF00FFFF, 0x0000FFFF, 0xCCCCFFFF, 0xCCCC33CC,
 	0xCC3333CC, 0xFFFFCCCC, 0xFFFFEEFF, 0xFFEEEEFF,
 	0xFFDDFFFF, 0xDDDDFFFF, 0xBBFFFFFF, 0xBBFFFFFF,
@@ -362,10 +371,12 @@ enum vdd_io_level {
 	VDD_IO_SET_LEVEL,
 };
 
+#ifndef CONFIG_MMC_SDHCI_BH201
 enum dll_init_context {
 	DLL_INIT_NORMAL = 0,
 	DLL_INIT_FROM_CX_COLLAPSE_EXIT,
 };
+#endif
 
 static unsigned int sdhci_msm_get_sup_clk_rate(struct sdhci_host *host,
 						u32 req_clk);
@@ -501,7 +512,7 @@ static int sdhci_msm_config_auto_tuning_cmd(struct sdhci_host *host,
 	return rc;
 }
 
-static int msm_config_cm_dll_phase(struct sdhci_host *host, u8 phase)
+int msm_config_cm_dll_phase(struct sdhci_host *host, u8 phase)
 {
 	int rc = 0;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
@@ -577,7 +588,7 @@ out:
  * selected DLL clock output phase.
  */
 
-static int msm_find_most_appropriate_phase(struct sdhci_host *host,
+int msm_find_most_appropriate_phase(struct sdhci_host *host,
 				u8 *phase_table, u8 total_phases)
 {
 	int ret;
@@ -714,7 +725,7 @@ static inline void msm_cm_dll_set_freq(struct sdhci_host *host)
 }
 
 /* Initialize the DLL (Programmable Delay Line ) */
-static int msm_init_cm_dll(struct sdhci_host *host,
+int msm_init_cm_dll(struct sdhci_host *host,
 				enum dll_init_context init_context)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
@@ -1142,7 +1153,7 @@ out:
 	return ret;
 }
 
-static int sdhci_msm_hs400_dll_calibration(struct sdhci_host *host)
+int sdhci_msm_hs400_dll_calibration(struct sdhci_host *host)
 {
 	int ret = 0;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
@@ -1183,7 +1194,7 @@ out:
 	return ret;
 }
 
-static void sdhci_msm_set_mmc_drv_type(struct sdhci_host *host, u32 opcode,
+void sdhci_msm_set_mmc_drv_type(struct sdhci_host *host, u32 opcode,
 		u8 drv_type)
 {
 	struct mmc_command cmd = {0};
@@ -1643,6 +1654,14 @@ out:
 	pr_debug("%s: Exit %s, err(%d)\n", mmc_hostname(mmc), __func__, rc);
 	return rc;
 }
+
+#ifdef CONFIG_MMC_SDHCI_BH201
+void sdhci_bht_set_timeout(struct sdhci_host *host, struct mmc_command *cmd)
+{
+	sdhci_writeb(host, 0xE, SDHCI_TIMEOUT_CONTROL);
+	pr_info("BHT_MSG: set SDHCI_TIMEOUT_CONTROL to 0xE\n");
+}
+#endif
 
 static int sdhci_msm_setup_gpio(struct sdhci_msm_pltfm_data *pdata, bool enable)
 {
@@ -2262,6 +2281,15 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 	if (gpio_is_valid(pdata->status_gpio) && !(flags & OF_GPIO_ACTIVE_LOW))
 		pdata->caps2 |= MMC_CAP2_CD_ACTIVE_HIGH;
 
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifdef CONFIG_MMC_SDHCI_BH201
+	pdata->pwr_gpio = of_get_named_gpio_flags(np, "pwr-gpios", 0, &flags);
+	dev_err(dev, "CD GPIO is:%d  pwr gpio is:%d \n", pdata->status_gpio, pdata->pwr_gpio);
+	if (gpio_is_valid(pdata->pwr_gpio)) {
+		dev_err(dev, " gpio: %d for Redriver power enable gpio \n",pdata->pwr_gpio);
+	}
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
 	of_property_read_u32(np, "qcom,bus-width", &bus_width);
 	if (bus_width == 8)
 		pdata->mmc_bus_width = MMC_CAP_8_BIT_DATA;
@@ -2899,6 +2927,38 @@ out:
 	return ret;
 }
 
+#if 0//def CONFIG_MMC_SDHCI_BH201
+static int sdhci_msm_setup_vreg_vddio(struct sdhci_msm_pltfm_data *pdata,
+			bool enable, bool is_init)
+{
+	int ret = 0;
+	struct sdhci_msm_slot_reg_data *curr_slot;
+	struct sdhci_msm_reg_data *vreg_vdd_io;
+
+	pr_err("[calvin::] %s().line:%d\n", __func__, __LINE__);
+	curr_slot = pdata->vreg_data;
+	if (!curr_slot) {
+		pr_debug("%s: vreg info unavailable,assuming the slot is powered by always on domain\n",
+			 __func__);
+		goto out;
+	}
+
+	vreg_vdd_io = curr_slot->vdd_io_data;
+
+	if (vreg_vdd_io) {
+		if (enable)
+			ret = sdhci_msm_vreg_enable(vreg_vdd_io);
+		else
+			ret = sdhci_msm_vreg_disable(vreg_vdd_io);
+		if (ret)
+			goto out;
+	}
+
+out:
+	return ret;
+}
+#endif
+
 static int sdhci_msm_setup_vreg(struct sdhci_msm_pltfm_data *pdata,
 			bool enable, bool is_init)
 {
@@ -3165,7 +3225,9 @@ static irqreturn_t sdhci_msm_pwr_irq(int irq, void *data)
 	unsigned long flags;
 	struct sdhci_msm_reg_data *vreg_io_bias =
 			msm_host->pdata->vreg_data->vdd_io_bias_data;
-
+#ifdef CONFIG_MMC_SDHCI_BH201
+	//int card_present_status = 0;
+#endif
 	irq_status = sdhci_msm_readb_relaxed(host,
 		msm_host_offset->CORE_PWRCTL_STATUS);
 
@@ -3189,11 +3251,84 @@ static irqreturn_t sdhci_msm_pwr_irq(int irq, void *data)
 
 		pwr_state = REQ_BUS_ON;
 		io_level = REQ_IO_HIGH;
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifdef CONFIG_MMC_SDHCI_BH201
+		if (bht_target_host(host)) {
+			#if 0
+			if(gpio_is_valid(msm_host->pdata->status_gpio)){
+				card_present_status = gpio_get_value(msm_host->pdata->status_gpio);
+				pr_info("%s: det_gpio pin %d status is %s\n", mmc_hostname(host->mmc), msm_host->pdata->status_gpio,
+					card_present_status > 0? "Insert SDcard": "Remove SDcard");
+			}else {
+				pr_err("%s: no det_gpio provided\n", mmc_hostname(host->mmc));
+			}
+			pr_info("%s: apply bht power on patch\n", mmc_hostname(host->mmc));
+			pr_info("%s: set CD# as input, present status is %d\n", mmc_hostname(host->mmc), card_present_status);
+			#endif
+
+			pr_info("%s: apply bht power on patch\n", mmc_hostname(host->mmc));
+			_ggc_reset_tuning_result_for_dll(host);
+			ggc_dll_voltage_init(host);
+			ggc_chip_init(host);
+			msleep(100);
+
+			if(gpio_is_valid(msm_host->pdata->pwr_gpio)){
+				gpio_set_value(msm_host->pdata->pwr_gpio, 1);//set PWR GPIO on
+				pr_info("%s: pwr_gpio pin(GPIO-%d) status is %s\n", mmc_hostname(host->mmc), msm_host->pdata->pwr_gpio,\
+					gpio_get_value(msm_host->pdata->pwr_gpio) > 0 ? "HIGH": "LOW");
+			}else {
+				pr_err("%s: no pwr_gpio provided\n", mmc_hostname(host->mmc));
+			}
+		}
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
 	}
 	if (irq_status & CORE_PWRCTL_BUS_OFF) {
-		if (msm_host->pltfm_init_done)
-			ret = sdhci_msm_setup_vreg(msm_host->pdata,
+		if (msm_host->pltfm_init_done) {
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifdef CONFIG_MMC_SDHCI_BH201
+			if (bht_target_host(host)){
+				#if 0
+				if(gpio_is_valid(msm_host->pdata->status_gpio)){
+					card_present_status = gpio_get_value(msm_host->pdata->status_gpio);
+					pr_info("%s: det_gpio pin %d status is %s\n", mmc_hostname(host->mmc), msm_host->pdata->status_gpio,
+					card_present_status > 0 ? "Insert SDcard": "Remove SDcard");
+				} else {
+					pr_err("%s: no det_gpio provided\n", mmc_hostname(host->mmc));
+				}
+				pr_info("%s: apply bht power off patch\n", mmc_hostname(host->mmc));
+				pr_info("%s: set CD# as input, present status is %d\n", mmc_hostname(host->mmc), card_present_status);
+
+				ggc_dll_voltage_init(host);
+				// when GPIO_SD_CARD_PRESENT is 1, the card is removed
+				if (!card_present_status) {
+					pr_info("%s: clear tuning result for power off and card removed\n", mmc_hostname(host->mmc));
+					ggc_tuning_result_reset(host);
+				}
+				ggc_chip_init(host);
+				#endif
+				pr_info("%s: apply bht power off patch\n", mmc_hostname(host->mmc));
+				if(gpio_is_valid(msm_host->pdata->pwr_gpio)){
+					gpio_set_value(msm_host->pdata->pwr_gpio, 0);//set PWR GPIO off
+					pr_info("%s: pwr_gpio pin(GPIO-%d) status is %s\n", mmc_hostname(host->mmc), msm_host->pdata->pwr_gpio,\
+						gpio_get_value(msm_host->pdata->pwr_gpio) > 0 ? "HIGH": "LOW");
+				} else {
+					pr_err("%s: no pwr_gpio provided\n", mmc_hostname(host->mmc));
+				}
+				#if  1
+				//ret = sdhci_msm_setup_vreg_vddio(msm_host->pdata, false, false);
+				ret = sdhci_msm_setup_vreg(msm_host->pdata, false, false);
+				#endif
+			}
+			else
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
+			{
+				ret = sdhci_msm_setup_vreg(msm_host->pdata,
 					false, false);
+			}
+		}
+
 		if (!ret) {
 			ret = sdhci_msm_setup_pins(msm_host->pdata, false);
 			ret |= sdhci_msm_set_vdd_io_vol(msm_host->pdata,
@@ -3207,6 +3342,7 @@ static irqreturn_t sdhci_msm_pwr_irq(int irq, void *data)
 		pwr_state = REQ_BUS_OFF;
 		io_level = REQ_IO_LOW;
 	}
+
 	/* Handle IO LOW/HIGH */
 	if (irq_status & CORE_PWRCTL_IO_LOW) {
 		/* Switch voltage Low */
@@ -3916,6 +4052,17 @@ static void sdhci_msm_set_clock(struct sdhci_host *host, unsigned int clock)
 
 	curr_pwrsave = !!(readl_relaxed(host->ioaddr +
 	msm_host_offset->CORE_VENDOR_SPEC) & CORE_CLK_PWRSAVE);
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifdef CONFIG_MMC_SDHCI_BH201
+	if ( bht_target_host(host)){
+		writel_relaxed(readl_relaxed(host->ioaddr + msm_host_offset->CORE_VENDOR_SPEC)
+					& ~CORE_CLK_PWRSAVE,
+					host->ioaddr + msm_host_offset->CORE_VENDOR_SPEC);
+		}
+	else
+	{
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
 	if ((clock > 400000) &&
 	    !curr_pwrsave && card /*&& mmc_host_may_gate_card(card)*/)
 		writel_relaxed(readl_relaxed(host->ioaddr +
@@ -3931,7 +4078,11 @@ static void sdhci_msm_set_clock(struct sdhci_host *host, unsigned int clock)
 				msm_host_offset->CORE_VENDOR_SPEC)
 				& ~CORE_CLK_PWRSAVE, host->ioaddr +
 				msm_host_offset->CORE_VENDOR_SPEC);
-
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifdef CONFIG_MMC_SDHCI_BH201
+	}
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
 	sup_clock = sdhci_msm_get_sup_clk_rate(host, clock);
 	if ((curr_ios.timing == MMC_TIMING_UHS_DDR50) ||
 		(curr_ios.timing == MMC_TIMING_MMC_DDR52) ||
@@ -5111,7 +5262,16 @@ static struct sdhci_ops sdhci_msm_ops = {
 	.crypto_engine_reset = sdhci_msm_ice_reset,
 	.set_uhs_signaling = sdhci_msm_set_uhs_signaling,
 	.check_power_status = sdhci_msm_check_power_status,
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifdef CONFIG_MMC_SDHCI_BH201
+	//Add by ZhaoZiqiang for fixing issue#328[data timeout error] begin
+	.set_timeout = sdhci_bht_set_timeout,
+	//Add by ZhaoZiqiang for fixing issue#328[data timeout error] end
+	.platform_execute_tuning = sdhci_bht_execute_tuning,
+#else
 	.platform_execute_tuning = sdhci_msm_execute_tuning,
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
 	.enhanced_strobe = sdhci_msm_enhanced_strobe,
 	.toggle_cdr = sdhci_msm_toggle_cdr,
 	.get_max_segments = sdhci_msm_max_segs,
@@ -5817,7 +5977,15 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 			goto vreg_deinit;
 		}
 	}
-
+/* huaqin add for SD card bringup by liufurong at 20190201 start */
+#ifdef CONFIG_MMC_SDHCI_BH201
+	if (gpio_is_valid(msm_host->pdata->pwr_gpio)) {
+		ret = devm_gpio_request_one(msm_host->mmc->parent, msm_host->pdata->pwr_gpio, GPIOF_OUT_INIT_LOW, "redrive_pwr_en");
+		if (ret < 0)
+			return ret;
+	}
+#endif
+/* huaqin add for SD card bringup by liufurong at 20190201 end */
 	if ((sdhci_readl(host, SDHCI_CAPABILITIES) & SDHCI_CAN_64BIT) &&
 		(dma_supported(mmc_dev(host->mmc), DMA_BIT_MASK(64)))) {
 		host->dma_mask = DMA_BIT_MASK(64);
@@ -5882,12 +6050,14 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 		goto vreg_deinit;
 	}
 
+#ifndef CONFIG_MMC_SDHCI_BH201
 	/*
 	 * To avoid polling and to avoid this R1b command conversion
 	 * to R1 command if the requested busy timeout > host's max
 	 * busy timeout in case of sanitize, erase or any R1b command
 	 */
 	host->mmc->max_busy_timeout = 0;
+#endif
 
 	msm_host->pltfm_init_done = true;
 
@@ -5978,6 +6148,7 @@ bus_clk_disable:
 	if (!IS_ERR_OR_NULL(msm_host->bus_clk))
 		clk_disable_unprepare(msm_host->bus_clk);
 pltfm_free:
+
 	sdhci_pltfm_free(pdev);
 out_host_free:
 	devm_kfree(&pdev->dev, msm_host);
@@ -6000,6 +6171,10 @@ static int sdhci_msm_remove(struct platform_device *pdev)
 	pr_debug("%s: %s Enter\n", dev_name(&pdev->dev), __func__);
 	if (!gpio_is_valid(msm_host->pdata->status_gpio))
 		device_remove_file(&pdev->dev, &msm_host->polling);
+	#ifdef CONFIG_MMC_SDHCI_BH201
+	if(gpio_is_valid(msm_host->pdata->pwr_gpio))
+		devm_gpio_free(&pdev->dev, msm_host->pdata->pwr_gpio);
+	#endif
 
 	device_remove_file(&pdev->dev, &msm_host->auto_cmd21_attr);
 	device_remove_file(&pdev->dev, &msm_host->msm_bus_vote.max_bus_bw);
