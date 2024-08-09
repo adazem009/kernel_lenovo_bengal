@@ -39,6 +39,9 @@
 
 #define NUM_ATTEMPTS 5
 
+static int dspg_micbias_flag = 0;
+static int ap_micbias_flag = 0;
+
 enum {
 	CODEC_TX = 0,
 	CODEC_RX,
@@ -1456,6 +1459,7 @@ int wcd937x_micbias_control(struct snd_soc_component *component,
 				0xC0, 0x00);
 		break;
 	case MICB_ENABLE:
+		ap_micbias_flag = 1;
 		wcd937x->micb_ref[micb_index]++;
 		mutex_lock(&wcd937x->ana_tx_clk_lock);
 		wcd937x->ana_clk_count++;
@@ -1484,6 +1488,7 @@ int wcd937x_micbias_control(struct snd_soc_component *component,
 				&wcd937x->mbhc->wcd_mbhc);
 		break;
 	case MICB_DISABLE:
+		ap_micbias_flag = 0;
 		mutex_lock(&wcd937x->ana_tx_clk_lock);
 		wcd937x->ana_clk_count--;
 		mutex_unlock(&wcd937x->ana_tx_clk_lock);
@@ -1519,6 +1524,17 @@ int wcd937x_micbias_control(struct snd_soc_component *component,
 			blocking_notifier_call_chain(
 				&wcd937x->mbhc->notifier, post_dapm_off,
 				&wcd937x->mbhc->wcd_mbhc);
+		if (dspg_micbias_flag == 1){
+			printk("dspg: ap can't disable dsp micbias");
+			snd_soc_component_update_bits(component, WCD937X_ANA_MICB1,
+				0x40, 0x40);
+			snd_soc_component_update_bits(component, WCD937X_ANA_MICB3,
+				0x40, 0x40);
+			snd_soc_component_update_bits(component, WCD937X_DIGITAL_CDC_ANA_CLK_CTL,
+				0x18, 0x18);
+			snd_soc_component_update_bits(component, WCD937X_DIGITAL_CDC_DIG_CLK_CTL,
+				0x18, 0x18);
+		}
 		break;
 	};
 
@@ -1890,6 +1906,56 @@ static int wcd937x_set_compander(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+int wcd937x_get_DSPG_mic(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = 0;
+
+	return 0;
+}
+
+int wcd937x_set_DSPG_mic(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct wcd937x_priv *wcd937x = snd_soc_component_get_drvdata(component);
+	int enable = ucontrol->value.integer.value[0];
+
+	pr_err("set dspg micbias enable: %x", enable);
+
+	if (enable) {
+		if (dspg_micbias_flag == 1){
+			printk("d4a_sva: dspg micbias have enabled");
+			return 0 ;
+		}
+		regmap_update_bits(wcd937x->regmap, WCD937X_ANA_MICB1,
+			0x40, 0x40);
+		regmap_update_bits(wcd937x->regmap, WCD937X_ANA_MICB3,
+			0x40, 0x40);
+		regmap_update_bits(wcd937x->regmap, WCD937X_DIGITAL_CDC_ANA_CLK_CTL,
+			0x18, 0x18);
+		regmap_update_bits(wcd937x->regmap, WCD937X_DIGITAL_CDC_DIG_CLK_CTL,
+			0x18, 0x18);
+		dspg_micbias_flag = 1;
+	} else {
+		if (ap_micbias_flag == 1){
+			printk("d4a_sva: dspg micbias disable return case ap in use");
+			return 0 ;
+		}
+		regmap_update_bits(wcd937x->regmap, WCD937X_ANA_MICB1,
+			0x40, 0x00);
+		regmap_update_bits(wcd937x->regmap, WCD937X_ANA_MICB3,
+			0x40, 0x00);
+		regmap_update_bits(wcd937x->regmap, WCD937X_DIGITAL_CDC_ANA_CLK_CTL,
+			0x18, 0x00);
+		regmap_update_bits(wcd937x->regmap, WCD937X_DIGITAL_CDC_DIG_CLK_CTL,
+			0x18, 0x00);
+		dspg_micbias_flag = 0;
+	}
+
+	return 0;
+}
+
 static int wcd937x_codec_enable_vdd_buck(struct snd_soc_dapm_widget *w,
 					 struct snd_kcontrol *kcontrol,
 					 int event)
@@ -1979,6 +2045,8 @@ static const struct snd_kcontrol_new wcd937x_snd_controls[] = {
 		wcd937x_get_compander, wcd937x_set_compander),
 	SOC_SINGLE_EXT("HPHR_COMP Switch", SND_SOC_NOPM, 1, 1, 0,
 		wcd937x_get_compander, wcd937x_set_compander),
+	SOC_SINGLE_EXT("DSPG_mic", SND_SOC_NOPM, 0, 1, 0,
+		wcd937x_get_DSPG_mic, wcd937x_set_DSPG_mic),
 
 	SOC_SINGLE_TLV("HPHL Volume", WCD937X_HPH_L_EN, 0, 20, 1, line_gain),
 	SOC_SINGLE_TLV("HPHR Volume", WCD937X_HPH_R_EN, 0, 20, 1, line_gain),
