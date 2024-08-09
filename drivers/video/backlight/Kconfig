@@ -498,6 +498,14 @@ config LCD_BIAS_TPS65132
 	  Please make sure CONFIG_MTK_LCM_BIAS_TPS65132 in xxxxxx_defconfig.mk.
 	  And also make sure true on in ProjectConfig.mk
 
+config BACKLIGHT_SGM37604
+	bool "Enble SGM37604A driver"
+	help
+	  define SGM37604A driver config to enable SGM37604A driver.
+	  To set SGM37604A driver which you choose avoid cannot driver SGM37604A.
+	  Please make sure CONFIG_MTK_LCM_BACKLIGHT_SGM37604A in xxxxxx_defconfig.mk.
+	  And also make sure true on in ProjectConfig.mk
+
 endif # BACKLIGHT_CLASS_DEVICE
 
 endif # BACKLIGHT_LCD_SUPPORT
