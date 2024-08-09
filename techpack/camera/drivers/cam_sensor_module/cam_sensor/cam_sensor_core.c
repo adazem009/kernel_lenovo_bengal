@@ -12,6 +12,8 @@
 #include "cam_common_util.h"
 #include "cam_packet_util.h"
 
+char *fcam_name = "Not support";
+char *rcam_name = "Not support";
 
 static void cam_sensor_update_req_mgr(
 	struct cam_sensor_ctrl_t *s_ctrl,
@@ -614,6 +616,8 @@ int cam_sensor_match_id(struct cam_sensor_ctrl_t *s_ctrl)
 {
 	int rc = 0;
 	uint32_t chipid = 0;
+	uint32_t moduleid = 0;
+	uint16_t tmpsid = 0;
 	struct cam_camera_slave_info *slave_info;
 
 	slave_info = &(s_ctrl->sensordata->slave_info);
@@ -631,13 +635,39 @@ int cam_sensor_match_id(struct cam_sensor_ctrl_t *s_ctrl)
 		s_ctrl->sensor_probe_addr_type,
 		s_ctrl->sensor_probe_data_type);
 
-	CAM_DBG(CAM_SENSOR, "read id: 0x%x expected id 0x%x:",
+	CAM_ERR(CAM_SENSOR, "read id: 0x%x expected id 0x%x:",
 		chipid, slave_info->sensor_id);
+
+	if(chipid == 0x0d42){
+		tmpsid = s_ctrl->io_master_info.cci_client->sid;
+		s_ctrl->io_master_info.cci_client->sid = 0xB0 >> 1;
+		rc = camera_io_dev_read(
+			&(s_ctrl->io_master_info),
+			0x000b,
+			&moduleid, CAMERA_SENSOR_I2C_TYPE_WORD,
+			CAMERA_SENSOR_I2C_TYPE_WORD);
+		s_ctrl->io_master_info.cci_client->sid = tmpsid;
+		CAM_ERR(CAM_SENSOR, "ov13b10 read moduleid: 0x%x expected moduleid 0x%x:",
+			moduleid, slave_info->sensor_id);
+		if (moduleid != slave_info->sensor_id)
+			return -ENODEV;
+		if (slave_info->sensor_id == 0x07d9){
+			rcam_name = "ofilm ov13b10 13m";
+		} else if (slave_info->sensor_id == 0x06d9){
+			rcam_name = "qtech ov13b10 13m";
+		}
+		return rc;
+	}
 
 	if (cam_sensor_id_by_mask(s_ctrl, chipid) != slave_info->sensor_id) {
 		CAM_WARN(CAM_SENSOR, "read id: 0x%x expected id 0x%x:",
 				chipid, slave_info->sensor_id);
 		return -ENODEV;
+	}
+	if (slave_info->sensor_id == 0x487b){
+		fcam_name = "lcetron s5k4h7yx 8m";
+	} else if (slave_info->sensor_id == 0x885a){
+		fcam_name = "kingcome ov8856 8m";
 	}
 	return rc;
 }
