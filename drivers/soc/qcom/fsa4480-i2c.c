@@ -9,6 +9,9 @@
 #include <linux/i2c.h>
 #include <linux/mutex.h>
 #include <linux/soc/qcom/fsa4480-i2c.h>
+#include <linux/gpio.h>
+#include <linux/of.h>
+#include <linux/of_gpio.h>
 
 #define FSA4480_I2C_NAME	"fsa4480-driver"
 
@@ -159,6 +162,8 @@ static int fsa4480_usbc_analog_setup_switches(struct fsa4480_priv *fsa_priv)
 		/* notify call chain on event */
 		blocking_notifier_call_chain(&fsa_priv->fsa4480_notifier,
 		mode.intval, NULL);
+		if (gpio_is_valid(headset_det_gpio_num))
+			gpio_set_value(headset_det_gpio_num, 1);
 		break;
 	case POWER_SUPPLY_TYPEC_NONE:
 		/* notify call chain on event */
@@ -167,6 +172,8 @@ static int fsa4480_usbc_analog_setup_switches(struct fsa4480_priv *fsa_priv)
 
 		/* deactivate switches */
 		fsa4480_usbc_update_settings(fsa_priv, 0x18, 0x98);
+		if (gpio_is_valid(headset_det_gpio_num))
+			gpio_set_value(headset_det_gpio_num, 0);
 		break;
 	default:
 		/* ignore other usb connection modes */
@@ -356,6 +363,7 @@ static int fsa4480_probe(struct i2c_client *i2c,
 {
 	struct fsa4480_priv *fsa_priv;
 	int rc = 0;
+	int ret;
 
 	fsa_priv = devm_kzalloc(&i2c->dev, sizeof(*fsa_priv),
 				GFP_KERNEL);
@@ -364,7 +372,14 @@ static int fsa4480_probe(struct i2c_client *i2c,
 
 	fsa_priv->dev = &i2c->dev;
 
-	fsa_priv->usb_psy = power_supply_get_by_name("usb");
+	headset_det_gpio_num = of_get_named_gpio(i2c->dev.of_node, "headset_det", 0);
+	if (gpio_is_valid(headset_det_gpio_num)){
+		 ret = devm_gpio_request_one(&i2c->dev, headset_det_gpio_num,GPIOF_OUT_INIT_LOW, "headset_det");
+		 if (ret < 0)
+		    printk(KERN_INFO "gpio_request failed fsa4480_probe \n");
+	}
+	fsa_priv->usb_psy = power_supply_get_by_name("fusb302");
+	fsa_priv->usb_psy = power_supply_get_by_name("customer");
 	if (!fsa_priv->usb_psy) {
 		rc = -EPROBE_DEFER;
 		dev_dbg(fsa_priv->dev,
@@ -462,7 +477,7 @@ static int __init fsa4480_init(void)
 
 	return rc;
 }
-module_init(fsa4480_init);
+late_initcall(fsa4480_init);
 
 static void __exit fsa4480_exit(void)
 {
