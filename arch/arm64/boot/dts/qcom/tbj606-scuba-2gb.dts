@@ -572,6 +572,7 @@
 			compatible = "qcom,pshold";
 			reg = <0x440b000 0x04 0x3d3000 0x04>;
 			reg-names = "pshold-base\0tcsr-boot-misc-detect";
+			qcom,force-warm-reboot;
 		};
 
 		hwkm@4440000 {
