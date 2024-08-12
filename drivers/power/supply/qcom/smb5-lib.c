@@ -7350,7 +7350,7 @@ static void smblib_uusb_otg_work(struct work_struct *work)
 		if (otg) {
 			/* otg cable inserted */
 			if (chg->typec_port) {
-				typec_partner_register(chg);
+				typec_partner_register(chg, 0);
 				typec_set_data_role(chg->typec_port,
 							TYPEC_HOST);
 				typec_set_pwr_role(chg->typec_port,
