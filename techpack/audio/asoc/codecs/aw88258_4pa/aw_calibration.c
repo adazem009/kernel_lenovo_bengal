@@ -59,7 +59,7 @@ static int aw_cali_write_re_to_file(int32_t cali_re, int ch_index)
 	pos = ch_index * AW_INT_DEC_DIGIT;
 
 	cali_re = AW_DSP_RE_TO_SHOW_RE(cali_re);
-	snprintf(buf, PAGE_SIZE, "%10d", cali_re);
+	snprintf(buf, sizeof(buf), "%10d", cali_re);
 
 	fs = get_fs();
 	set_fs(KERNEL_DS);
@@ -913,7 +913,7 @@ ssize_t aw_cali_range_read(struct file *file,
 		return -ENOSPC;
 	}
 
-	ret = snprintf(local_buf, PAGE_SIZE,
+	ret = snprintf(local_buf, sizeof(local_buf),
 			" Min:%d mOhms, Max:%d mOhms\n", R0_MIN, R0_MAX);
 
 	ret = simple_read_from_buffer(buf, len, ppos, local_buf, ret);
